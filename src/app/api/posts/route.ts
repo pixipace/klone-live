@@ -93,6 +93,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // YouTube
+    if (platforms.includes("youtube")) {
+      const cookie = request.cookies.get("youtube_account")?.value;
+      if (!cookie) {
+        results.youtube = { error: "YouTube not connected" };
+      } else if (!mediaUrl || mediaType !== "video") {
+        results.youtube = {
+          error: "YouTube requires a video file. Please upload an MP4.",
+        };
+      } else {
+        try {
+          const account = JSON.parse(cookie);
+          results.youtube = await postToYouTube(
+            account.accessToken,
+            caption,
+            mediaUrl
+          );
+        } catch (err) {
+          console.error("YouTube post error:", err);
+          results.youtube = { error: String(err) };
+        }
+      }
+    }
+
     return NextResponse.json({ success: true, results });
   } catch (err) {
     console.error("Post creation error:", err);
@@ -301,5 +325,78 @@ async function postToInstagram(
     success: true,
     id: publishData.id,
     message: "Posted to Instagram",
+  };
+}
+
+// --- YouTube ---
+async function postToYouTube(
+  accessToken: string,
+  caption: string,
+  mediaUrl: string
+) {
+  const filename = mediaUrl.replace("/api/uploads/", "");
+  const filePath = path.join(process.cwd(), ".uploads", filename);
+  const videoBuffer = await readFile(filePath);
+
+  // Use #Shorts in title to make it a YouTube Short (under 60s)
+  const title = caption.slice(0, 100) || "New Short";
+  const description = caption;
+
+  // Step 1: Initialize resumable upload
+  const initRes = await fetch(
+    "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json; charset=UTF-8",
+        "X-Upload-Content-Type": "video/mp4",
+        "X-Upload-Content-Length": String(videoBuffer.byteLength),
+      },
+      body: JSON.stringify({
+        snippet: {
+          title: title.includes("#Shorts") ? title : `${title} #Shorts`,
+          description,
+          categoryId: "22", // People & Blogs
+        },
+        status: {
+          privacyStatus: "private", // Start as private for safety
+          selfDeclaredMadeForKids: false,
+        },
+      }),
+    }
+  );
+
+  if (!initRes.ok) {
+    const errBody = await initRes.text();
+    throw new Error(`YouTube init error: ${initRes.status} - ${errBody}`);
+  }
+
+  const uploadUrl = initRes.headers.get("location");
+  if (!uploadUrl) {
+    throw new Error("No upload URL returned from YouTube");
+  }
+
+  // Step 2: Upload the video
+  const uploadRes = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "video/mp4",
+      "Content-Length": String(videoBuffer.byteLength),
+    },
+    body: videoBuffer,
+  });
+
+  if (!uploadRes.ok) {
+    const errBody = await uploadRes.text();
+    throw new Error(`YouTube upload error: ${uploadRes.status} - ${errBody}`);
+  }
+
+  const uploadData = await uploadRes.json();
+
+  return {
+    success: true,
+    id: uploadData.id,
+    message: "Video uploaded to YouTube as Short",
   };
 }
