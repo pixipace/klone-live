@@ -137,30 +137,52 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer className="border-t border-border py-8 px-6">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Image
-              src="/logo-icon.png"
-              alt="Klone"
-              width={24}
-              height={24}
-            />
-            <span className="text-sm text-muted-foreground">
-              &copy; 2026 Klone. All rights reserved.
-            </span>
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Image
+                src="/logo-icon.png"
+                alt="Klone"
+                width={24}
+                height={24}
+              />
+              <span className="text-sm text-muted-foreground">
+                &copy; 2026 Klone. All rights reserved.
+              </span>
+            </div>
+            <div className="flex gap-6">
+              <Link
+                href="/login"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Log in
+              </Link>
+              <Link
+                href="/signup"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Sign up
+              </Link>
+            </div>
           </div>
-          <div className="flex gap-6">
+          <div className="flex gap-6 mt-4 pt-4 border-t border-border">
             <Link
-              href="/login"
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              href="/privacy"
+              className="text-xs text-muted hover:text-muted-foreground transition-colors"
             >
-              Log in
+              Privacy Policy
             </Link>
             <Link
-              href="/signup"
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              href="/terms"
+              className="text-xs text-muted hover:text-muted-foreground transition-colors"
             >
-              Sign up
+              Terms of Service
+            </Link>
+            <Link
+              href="/data-deletion"
+              className="text-xs text-muted hover:text-muted-foreground transition-colors"
+            >
+              Data Deletion
             </Link>
           </div>
         </div>
