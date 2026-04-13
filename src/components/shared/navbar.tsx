@@ -1,29 +1,32 @@
 import Link from "next/link";
-import { Logo } from "./logo";
+import Image from "next/image";
 
 export function Navbar() {
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-sm">
-      <div className="mx-auto max-w-7xl flex items-center justify-between px-6 h-16">
-        <Logo />
-        <nav className="hidden md:flex items-center gap-8">
+    <header className="fixed top-0 left-0 right-0 z-50 bg-background/60 backdrop-blur-xl border-b border-border/30">
+      <div className="mx-auto max-w-5xl flex items-center justify-between px-6 h-14">
+        <Link href="/" className="flex items-center gap-2">
+          <Image src="/logo-icon.png" alt="Klone" width={22} height={22} />
+          <span className="text-sm font-semibold tracking-tight">KLONE</span>
+        </Link>
+        <nav className="hidden md:flex items-center gap-6">
           <Link
             href="/#features"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             Features
           </Link>
         </nav>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <Link
             href="/login"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5"
           >
             Log in
           </Link>
           <Link
             href="/signup"
-            className="text-sm font-medium bg-accent hover:bg-accent-hover text-white px-4 py-2 rounded-lg transition-colors"
+            className="text-xs font-medium bg-accent hover:bg-accent-hover text-white px-4 py-1.5 rounded-lg transition-colors"
           >
             Get Started
           </Link>

@@ -9,9 +9,9 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <div className="ml-60">
+      <div className="ml-[220px]">
         <Topbar />
-        <main className="p-6">{children}</main>
+        <main className="p-6 max-w-6xl">{children}</main>
       </div>
     </div>
   );

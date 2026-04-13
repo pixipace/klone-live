@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Outfit } from "next/font/google";
+import { Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const outfit = Outfit({
+  variable: "--font-outfit",
   subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
 });
 
 const geistMono = Geist_Mono({
@@ -13,16 +15,16 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Klone - AI Social Media Automation",
+  title: "Klone — Social Media, Simplified",
   description:
-    "Schedule, create, and publish content across all social media platforms with AI-powered automation.",
+    "Publish to TikTok, Instagram, Facebook, YouTube, and LinkedIn from one dashboard.",
   icons: {
     icon: "/favicon.png",
   },
   openGraph: {
-    title: "Klone - AI Social Media Automation",
+    title: "Klone — Social Media, Simplified",
     description:
-      "Schedule, create, and publish content across all social media platforms with AI-powered automation.",
+      "Publish to TikTok, Instagram, Facebook, YouTube, and LinkedIn from one dashboard.",
     url: "https://klone.live",
     siteName: "Klone",
     type: "website",
@@ -37,7 +39,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+      className={`${outfit.variable} ${geistMono.variable} h-full antialiased dark`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
         {children}
