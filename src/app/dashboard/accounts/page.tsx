@@ -84,8 +84,8 @@ const PLATFORM_CARDS: PlatformCard[] = [
     id: "linkedin",
     name: "LinkedIn",
     color: "#0077b5",
-    oauth: null,
-    description: "Coming soon",
+    oauth: "/api/auth/linkedin",
+    description: "Post to your LinkedIn profile and company pages",
   },
   {
     id: "youtube",
@@ -118,6 +118,9 @@ function AccountsContent() {
   const [youtubeStatus, setYoutubeStatus] = useState<AccountStatus>({
     connected: false,
   });
+  const [linkedinStatus, setLinkedinStatus] = useState<AccountStatus>({
+    connected: false,
+  });
   const [loading, setLoading] = useState(true);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [metaExpanded, setMetaExpanded] = useState(false);
@@ -125,15 +128,17 @@ function AccountsContent() {
   const fetchStatuses = useCallback(async () => {
     setLoading(true);
     try {
-      const [ttRes, fbRes, igRes, ytRes] = await Promise.all([
+      const [ttRes, fbRes, igRes, ytRes, liRes] = await Promise.all([
         fetch("/api/accounts/tiktok").then((r) => r.json()),
         fetch("/api/accounts/facebook").then((r) => r.json()),
         fetch("/api/accounts/instagram").then((r) => r.json()),
         fetch("/api/accounts/youtube").then((r) => r.json()),
+        fetch("/api/accounts/linkedin").then((r) => r.json()),
       ]);
 
       setTiktokStatus(ttRes);
       setYoutubeStatus(ytRes);
+      setLinkedinStatus(liRes);
 
       if (fbRes.connected || igRes.connected) {
         setMetaStatus({
@@ -174,6 +179,9 @@ function AccountsContent() {
       } else if (cardId === "youtube") {
         await fetch("/api/accounts/youtube", { method: "DELETE" });
         setYoutubeStatus({ connected: false });
+      } else if (cardId === "linkedin") {
+        await fetch("/api/accounts/linkedin", { method: "DELETE" });
+        setLinkedinStatus({ connected: false });
       }
       router.replace("/dashboard/accounts");
     } finally {
@@ -185,6 +193,7 @@ function AccountsContent() {
     if (cardId === "tiktok") return tiktokStatus;
     if (cardId === "meta") return metaStatus;
     if (cardId === "youtube") return youtubeStatus;
+    if (cardId === "linkedin") return linkedinStatus;
     return { connected: false };
   };
 

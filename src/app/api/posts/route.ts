@@ -93,6 +93,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // LinkedIn
+    if (platforms.includes("linkedin")) {
+      const cookie = request.cookies.get("linkedin_account")?.value;
+      if (!cookie) {
+        results.linkedin = { error: "LinkedIn not connected" };
+      } else {
+        try {
+          const account = JSON.parse(cookie);
+          results.linkedin = await postToLinkedIn(
+            account.accessToken,
+            account.personUrn,
+            caption,
+            mediaUrl,
+            mediaType
+          );
+        } catch (err) {
+          console.error("LinkedIn post error:", err);
+          results.linkedin = { error: String(err) };
+        }
+      }
+    }
+
     // YouTube
     if (platforms.includes("youtube")) {
       const cookie = request.cookies.get("youtube_account")?.value;
@@ -399,4 +421,131 @@ async function postToYouTube(
     id: uploadData.id,
     message: "Video uploaded to YouTube as Short",
   };
+}
+
+// --- LinkedIn ---
+async function postToLinkedIn(
+  accessToken: string,
+  personUrn: string,
+  caption: string,
+  mediaUrl: string | undefined,
+  mediaType: "image" | "video" | null
+) {
+  if (!personUrn) throw new Error("LinkedIn person URN not found");
+
+  if (!mediaUrl) {
+    // Text-only post
+    const res = await fetch("https://api.linkedin.com/rest/posts", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "LinkedIn-Version": "202401",
+        "X-Restli-Protocol-Version": "2.0.0",
+      },
+      body: JSON.stringify({
+        author: personUrn,
+        commentary: caption,
+        visibility: "PUBLIC",
+        distribution: {
+          feedDistribution: "MAIN_FEED",
+        },
+        lifecycleState: "PUBLISHED",
+      }),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      throw new Error(`LinkedIn post error: ${res.status} - ${errBody}`);
+    }
+
+    const postId = res.headers.get("x-restli-id") || "posted";
+    return { success: true, id: postId, message: "Posted to LinkedIn" };
+  }
+
+  // Media post (image or video)
+  const isVideo = mediaType === "video";
+
+  // Step 1: Initialize upload
+  const initRes = await fetch(
+    "https://api.linkedin.com/rest/images?action=initializeUpload",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "LinkedIn-Version": "202401",
+      },
+      body: JSON.stringify({
+        initializeUploadRequest: {
+          owner: personUrn,
+        },
+      }),
+    }
+  );
+
+  if (!initRes.ok) {
+    const errBody = await initRes.text();
+    throw new Error(`LinkedIn upload init: ${initRes.status} - ${errBody}`);
+  }
+
+  const initData = await initRes.json();
+  const uploadUrl = initData.value?.uploadUrl;
+  const imageUrn = initData.value?.image;
+
+  if (!uploadUrl || !imageUrn) {
+    throw new Error("LinkedIn upload initialization failed");
+  }
+
+  // Step 2: Upload the file
+  const filename = mediaUrl.replace("/api/uploads/", "");
+  const filePath = path.join(process.cwd(), ".uploads", filename);
+  const fileBuffer = await readFile(filePath);
+
+  const uploadRes = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": isVideo ? "video/mp4" : "image/jpeg",
+    },
+    body: fileBuffer,
+  });
+
+  if (!uploadRes.ok) {
+    const errBody = await uploadRes.text();
+    throw new Error(`LinkedIn upload: ${uploadRes.status} - ${errBody}`);
+  }
+
+  // Step 3: Create post with media
+  const postRes = await fetch("https://api.linkedin.com/rest/posts", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "LinkedIn-Version": "202401",
+      "X-Restli-Protocol-Version": "2.0.0",
+    },
+    body: JSON.stringify({
+      author: personUrn,
+      commentary: caption,
+      visibility: "PUBLIC",
+      distribution: {
+        feedDistribution: "MAIN_FEED",
+      },
+      content: {
+        media: {
+          id: imageUrn,
+        },
+      },
+      lifecycleState: "PUBLISHED",
+    }),
+  });
+
+  if (!postRes.ok) {
+    const errBody = await postRes.text();
+    throw new Error(`LinkedIn post: ${postRes.status} - ${errBody}`);
+  }
+
+  const postId = postRes.headers.get("x-restli-id") || "posted";
+  return { success: true, id: postId, message: "Posted to LinkedIn" };
 }
