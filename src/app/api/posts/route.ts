@@ -440,7 +440,7 @@ async function postToLinkedIn(
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
-        "LinkedIn-Version": "202401",
+        "LinkedIn-Version": "202504",
         "X-Restli-Protocol-Version": "2.0.0",
       },
       body: JSON.stringify({
@@ -474,7 +474,7 @@ async function postToLinkedIn(
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
-        "LinkedIn-Version": "202401",
+        "LinkedIn-Version": "202504",
       },
       body: JSON.stringify({
         initializeUploadRequest: {
@@ -522,7 +522,7 @@ async function postToLinkedIn(
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
-      "LinkedIn-Version": "202401",
+      "LinkedIn-Version": "202504",
       "X-Restli-Protocol-Version": "2.0.0",
     },
     body: JSON.stringify({
