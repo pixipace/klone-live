@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createSession } from "@/lib/auth";
+import { checkRateLimit, resetRateLimit, getClientIp } from "@/lib/rate-limit";
 import bcrypt from "bcryptjs";
+
+const MAX_ATTEMPTS = 5;
+const WINDOW_MS = 15 * 60 * 1000;
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,6 +20,18 @@ export async function POST(request: NextRequest) {
 
     const normalizedEmail =
       typeof email === "string" ? email.toLowerCase().trim() : "";
+
+    const ip = getClientIp(request);
+    const rateKey = `login:${ip}:${normalizedEmail}`;
+    const limit = checkRateLimit(rateKey, MAX_ATTEMPTS, WINDOW_MS);
+
+    if (!limit.allowed) {
+      const retryAfter = Math.max(1, Math.ceil((limit.resetAt - Date.now()) / 1000));
+      return NextResponse.json(
+        { error: "Too many attempts. Try again later." },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } }
+      );
+    }
 
     const user = await prisma.user.findUnique({
       where: { email: normalizedEmail },
@@ -34,6 +50,8 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
+
+    resetRateLimit(rateKey);
 
     await createSession({
       id: user.id,

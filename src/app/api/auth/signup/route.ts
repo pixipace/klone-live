@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createSession } from "@/lib/auth";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import bcrypt from "bcryptjs";
 
 export async function POST(request: NextRequest) {
   try {
+    const ip = getClientIp(request);
+    const limit = checkRateLimit(`signup:${ip}`, 10, 60 * 60 * 1000);
+    if (!limit.allowed) {
+      const retryAfter = Math.max(1, Math.ceil((limit.resetAt - Date.now()) / 1000));
+      return NextResponse.json(
+        { error: "Too many signups from this network. Try again later." },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } }
+      );
+    }
+
     const { name, email, password } = await request.json();
 
     if (!email || !password) {
