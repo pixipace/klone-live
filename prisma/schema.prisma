@@ -8,12 +8,52 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  name         String?
-  email        String   @unique
-  passwordHash String
-  plan         String   @default("FREE")
-  credits      Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String          @id @default(cuid())
+  name           String?
+  email          String          @unique
+  passwordHash   String
+  plan           String          @default("FREE")
+  credits        Int             @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  socialAccounts SocialAccount[]
+  posts          Post[]
+}
+
+model SocialAccount {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform     String
+  accessToken  String
+  refreshToken String?
+  expiresAt    DateTime?
+  externalId   String?
+  username     String?
+  avatar       String?
+  meta         String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([userId, platform])
+  @@index([userId])
+}
+
+model Post {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  caption      String
+  mediaUrl     String?
+  mediaType    String?
+  platforms    String
+  status       String    @default("DRAFT")
+  results      String?
+  scheduledFor DateTime?
+  postedAt     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([scheduledFor])
 }
