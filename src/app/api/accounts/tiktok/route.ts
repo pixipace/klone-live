@@ -1,44 +1,58 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
 
-export async function GET(request: NextRequest) {
-  const tiktokCookie = request.cookies.get("tiktok_account")?.value;
+type TikTokMeta = { followers?: number };
 
-  if (!tiktokCookie) {
-    return NextResponse.json({ connected: false });
-  }
+export async function GET() {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ connected: false });
 
+  const account = await prisma.socialAccount.findUnique({
+    where: { userId_platform: { userId: session.id, platform: "tiktok" } },
+  });
+  if (!account) return NextResponse.json({ connected: false });
+
+  let meta: TikTokMeta = {};
   try {
-    const account = JSON.parse(tiktokCookie);
-    return NextResponse.json({
-      connected: true,
-      username: account.username,
-      avatar: account.avatar,
-      followers: account.followers,
-    });
+    if (account.meta) meta = JSON.parse(account.meta);
   } catch {
-    return NextResponse.json({ connected: false });
+    // ignore
   }
+
+  return NextResponse.json({
+    connected: true,
+    username: account.username,
+    avatar: account.avatar,
+    followers: meta.followers,
+  });
 }
 
-export async function DELETE(request: NextRequest) {
-  const tiktokCookie = request.cookies.get("tiktok_account")?.value;
-
-  // Revoke the token on TikTok's side so the user has to re-authorize
-  if (tiktokCookie) {
-    try {
-      const account = JSON.parse(tiktokCookie);
-      await fetch("https://open.tiktokapis.com/v2/oauth/revoke/", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          client_key: process.env.TIKTOK_CLIENT_KEY!,
-          client_secret: process.env.TIKTOK_CLIENT_SECRET!,
-          token: account.accessToken,
-        }),
-      });
-    } catch (err) {
-      console.error("Token revoke failed:", err);
-      // Continue with cookie deletion even if revoke fails
+export async function DELETE() {
+  const session = await getSession();
+  if (session) {
+    const account = await prisma.socialAccount.findUnique({
+      where: { userId_platform: { userId: session.id, platform: "tiktok" } },
+    });
+    if (account) {
+      try {
+        await fetch("https://open.tiktokapis.com/v2/oauth/revoke/", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            client_key: process.env.TIKTOK_CLIENT_KEY!,
+            client_secret: process.env.TIKTOK_CLIENT_SECRET!,
+            token: account.accessToken,
+          }),
+        });
+      } catch (err) {
+        console.error("Token revoke failed:", err);
+      }
+      await prisma.socialAccount
+        .delete({
+          where: { userId_platform: { userId: session.id, platform: "tiktok" } },
+        })
+        .catch(() => {});
     }
   }
 

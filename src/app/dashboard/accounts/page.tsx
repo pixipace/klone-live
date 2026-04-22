@@ -48,6 +48,8 @@ interface CombinedStatus {
   followers?: number;
   fbPages?: MetaPage[];
   igAccounts?: MetaIgAccount[];
+  selectedPageId?: string | null;
+  selectedInstagramId?: string | null;
 }
 
 interface PlatformCard {
@@ -124,6 +126,24 @@ function AccountsContent() {
   const [loading, setLoading] = useState(true);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [metaExpanded, setMetaExpanded] = useState(false);
+  const [selecting, setSelecting] = useState(false);
+
+  const handleSelect = async (
+    platform: "facebook" | "instagram",
+    selection: { pageId?: string; instagramId?: string }
+  ) => {
+    setSelecting(true);
+    try {
+      await fetch("/api/accounts/select", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform, selection }),
+      });
+      await fetchStatuses();
+    } finally {
+      setSelecting(false);
+    }
+  };
 
   const fetchStatuses = useCallback(async () => {
     setLoading(true);
@@ -148,6 +168,8 @@ function AccountsContent() {
           followers: igRes.followers,
           fbPages: fbRes.pages || [],
           igAccounts: igRes.accounts || [],
+          selectedPageId: fbRes.selectedPageId ?? null,
+          selectedInstagramId: igRes.selectedInstagramId ?? null,
         });
       } else {
         setMetaStatus({ connected: false });
@@ -333,43 +355,72 @@ function AccountsContent() {
                     {(status.fbPages?.length ?? 0) > 0 && (
                       <div>
                         <p className="text-xs font-medium text-muted-foreground mb-2">
-                          Facebook Pages
+                          Facebook Page to post to
                         </p>
                         <div className="space-y-1.5">
-                          {status.fbPages?.map((page) => (
-                            <div
-                              key={page.id}
-                              className="flex items-center gap-2 text-sm"
-                            >
-                              <FileText className="w-3.5 h-3.5 text-accent shrink-0" />
-                              <span className="truncate">{page.name}</span>
-                            </div>
-                          ))}
+                          {status.fbPages?.map((page) => {
+                            const isSelected = status.selectedPageId === page.id;
+                            return (
+                              <label
+                                key={page.id}
+                                className="flex items-center gap-2 text-sm cursor-pointer hover:bg-card/50 rounded px-1 py-0.5"
+                              >
+                                <input
+                                  type="radio"
+                                  name="fb-page"
+                                  checked={isSelected}
+                                  disabled={selecting}
+                                  onChange={() =>
+                                    handleSelect("facebook", { pageId: page.id })
+                                  }
+                                  className="accent-accent"
+                                />
+                                <FileText className="w-3.5 h-3.5 text-accent shrink-0" />
+                                <span className="truncate">{page.name}</span>
+                              </label>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
                     {(status.igAccounts?.length ?? 0) > 0 && (
                       <div>
                         <p className="text-xs font-medium text-muted-foreground mb-2">
-                          Instagram Business Accounts
+                          Instagram account to post to
                         </p>
                         <div className="space-y-1.5">
-                          {status.igAccounts?.map((ig) => (
-                            <div
-                              key={ig.instagramId}
-                              className="flex items-center gap-2 text-sm"
-                            >
-                              <Camera className="w-3.5 h-3.5 text-accent shrink-0" />
-                              <span className="truncate">
-                                @{ig.username}
-                                {ig.followers > 0 && (
-                                  <span className="text-muted-foreground ml-1">
-                                    ({ig.followers} followers)
-                                  </span>
-                                )}
-                              </span>
-                            </div>
-                          ))}
+                          {status.igAccounts?.map((ig) => {
+                            const isSelected =
+                              status.selectedInstagramId === ig.instagramId;
+                            return (
+                              <label
+                                key={ig.instagramId}
+                                className="flex items-center gap-2 text-sm cursor-pointer hover:bg-card/50 rounded px-1 py-0.5"
+                              >
+                                <input
+                                  type="radio"
+                                  name="ig-account"
+                                  checked={isSelected}
+                                  disabled={selecting}
+                                  onChange={() =>
+                                    handleSelect("instagram", {
+                                      instagramId: ig.instagramId,
+                                    })
+                                  }
+                                  className="accent-accent"
+                                />
+                                <Camera className="w-3.5 h-3.5 text-accent shrink-0" />
+                                <span className="truncate">
+                                  @{ig.username}
+                                  {ig.followers > 0 && (
+                                    <span className="text-muted-foreground ml-1">
+                                      ({ig.followers} followers)
+                                    </span>
+                                  )}
+                                </span>
+                              </label>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
