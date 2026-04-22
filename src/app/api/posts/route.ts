@@ -1,11 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import path from "path";
+import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
+  let postId: string | null = null;
   try {
     const body = await request.json();
     const { caption, mediaUrl, mediaType, platforms } = body;
+
+    const session = await getSession();
+    if (session) {
+      const created = await prisma.post.create({
+        data: {
+          userId: session.id,
+          caption: caption ?? "",
+          mediaUrl: mediaUrl ?? null,
+          mediaType: mediaType ?? null,
+          platforms: Array.isArray(platforms) ? platforms.join(",") : "",
+          status: "POSTING",
+        },
+      });
+      postId = created.id;
+    }
 
     const results: Record<string, unknown> = {};
 
@@ -139,9 +157,38 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true, results });
+    if (postId) {
+      const entries = Object.values(results);
+      const failed = entries.filter(
+        (r) => r && typeof r === "object" && "error" in (r as object)
+      ).length;
+      const status =
+        failed === 0
+          ? "POSTED"
+          : failed === entries.length
+            ? "FAILED"
+            : "PARTIAL";
+      await prisma.post.update({
+        where: { id: postId },
+        data: {
+          status,
+          results: JSON.stringify(results),
+          postedAt: status === "FAILED" ? null : new Date(),
+        },
+      });
+    }
+
+    return NextResponse.json({ success: true, postId, results });
   } catch (err) {
     console.error("Post creation error:", err);
+    if (postId) {
+      await prisma.post
+        .update({
+          where: { id: postId },
+          data: { status: "FAILED", results: JSON.stringify({ error: String(err) }) },
+        })
+        .catch(() => {});
+    }
     return NextResponse.json(
       { error: "Failed to create post" },
       { status: 500 }
