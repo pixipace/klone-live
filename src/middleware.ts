@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 
-const secret = new TextEncoder().encode(
-  process.env.NEXTAUTH_SECRET || "klone-dev-secret"
-);
+const secretValue = process.env.NEXTAUTH_SECRET;
+if (!secretValue || secretValue.length < 32) {
+  throw new Error(
+    "NEXTAUTH_SECRET must be set and at least 32 chars. Generate with: openssl rand -base64 32"
+  );
+}
+const secret = new TextEncoder().encode(secretValue);
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

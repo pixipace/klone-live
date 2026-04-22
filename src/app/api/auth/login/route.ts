@@ -14,7 +14,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const normalizedEmail =
+      typeof email === "string" ? email.toLowerCase().trim() : "";
+
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (!user) {
       return NextResponse.json(
         { error: "Invalid email or password" },
