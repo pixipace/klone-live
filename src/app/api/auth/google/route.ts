@@ -3,11 +3,11 @@ import { NextResponse } from "next/server";
 export async function GET() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const redirectUri = `${process.env.NEXTAUTH_URL}/auth/google/callback`;
-
   const csrfState = Math.random().toString(36).substring(2);
+
   const scope = [
+    "https://www.googleapis.com/auth/youtube",
     "https://www.googleapis.com/auth/youtube.upload",
-    "https://www.googleapis.com/auth/youtube.readonly",
     "https://www.googleapis.com/auth/userinfo.profile",
   ].join(" ");
 
