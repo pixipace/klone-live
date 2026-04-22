@@ -9,6 +9,7 @@ import {
   type PlatformResult,
   platformPosters,
 } from "@/lib/platforms";
+import { ensureFreshToken } from "@/lib/platforms/refresh";
 
 const PLATFORM_SET = new Set<PlatformId>(ALL_PLATFORMS);
 
@@ -72,8 +73,9 @@ export async function POST(request: NextRequest) {
         continue;
       }
       try {
+        const fresh = await ensureFreshToken(account);
         results[platform] = await platformPosters[platform]({
-          account,
+          account: fresh,
           caption: caption ?? "",
           mediaUrl,
           mediaType: mediaType ?? null,
