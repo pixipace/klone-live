@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { upsertSocialAccountForCurrentUser } from "@/lib/social-account";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -91,6 +92,17 @@ export async function GET(request: NextRequest) {
       avatar: channelAvatar,
       subscribers: subscriberCount,
       expiresAt: Date.now() + (expires_in || 3600) * 1000,
+    });
+
+    await upsertSocialAccountForCurrentUser({
+      platform: "youtube",
+      accessToken: access_token,
+      refreshToken: refresh_token ?? null,
+      expiresAt: new Date(Date.now() + (expires_in || 3600) * 1000),
+      externalId: channelId || null,
+      username: channelName,
+      avatar: channelAvatar,
+      meta: { subscribers: subscriberCount },
     });
 
     const response = NextResponse.redirect(

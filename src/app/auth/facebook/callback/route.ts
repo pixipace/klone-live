@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { upsertSocialAccountForCurrentUser } from "@/lib/social-account";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -135,6 +136,40 @@ export async function GET(request: NextRequest) {
               : null,
           })
         : null;
+
+    const expiresAtDate = longTokenData.expires_in
+      ? new Date(Date.now() + longTokenData.expires_in * 1000)
+      : null;
+
+    await upsertSocialAccountForCurrentUser({
+      platform: "facebook",
+      accessToken,
+      expiresAt: expiresAtDate,
+      externalId: userData.id ?? null,
+      username: firstPage?.name || userData.name || null,
+      avatar: userData.picture?.data?.url ?? null,
+      meta: {
+        userName: userData.name,
+        pages: pagesData.data || [],
+      },
+    });
+
+    if (igAccounts.length > 0) {
+      await upsertSocialAccountForCurrentUser({
+        platform: "instagram",
+        accessToken,
+        expiresAt: expiresAtDate,
+        externalId: igAccounts[0].instagramId ?? null,
+        username: igAccounts[0].username,
+        avatar: igAccounts[0].avatar,
+        meta: {
+          accounts: igAccounts,
+          selectedInstagramId: igAccounts[0].instagramId,
+          selectedPageId: igAccounts[0].pageId,
+          followers: igAccounts[0].followers,
+        },
+      });
+    }
 
     const response = NextResponse.redirect(
       `${process.env.NEXTAUTH_URL}/dashboard/accounts?connected=meta`

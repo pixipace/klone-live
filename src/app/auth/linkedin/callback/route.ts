@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { upsertSocialAccountForCurrentUser } from "@/lib/social-account";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -75,6 +76,16 @@ export async function GET(request: NextRequest) {
       avatar: userData.picture || "",
       email: userData.email || "",
       expiresAt: Date.now() + (expires_in || 5184000) * 1000,
+    });
+
+    await upsertSocialAccountForCurrentUser({
+      platform: "linkedin",
+      accessToken: access_token,
+      expiresAt: new Date(Date.now() + (expires_in || 5184000) * 1000),
+      externalId: userData.sub ?? null,
+      username: userData.name ?? null,
+      avatar: userData.picture ?? null,
+      meta: { personUrn, email: userData.email ?? null },
     });
 
     const response = NextResponse.redirect(

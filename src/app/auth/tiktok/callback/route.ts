@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { upsertSocialAccountForCurrentUser } from "@/lib/social-account";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -65,7 +66,6 @@ export async function GET(request: NextRequest) {
     const userData = await userResponse.json();
     const userInfo = userData.data?.user;
 
-    // Store in a cookie for now (in production, save to database)
     const accountData = JSON.stringify({
       platform: "tiktok",
       accessToken: access_token,
@@ -77,6 +77,17 @@ export async function GET(request: NextRequest) {
       followers: userInfo?.follower_count || 0,
     });
 
+    await upsertSocialAccountForCurrentUser({
+      platform: "tiktok",
+      accessToken: access_token,
+      refreshToken: refresh_token ?? null,
+      expiresAt: expires_in ? new Date(Date.now() + expires_in * 1000) : null,
+      externalId: open_id ?? null,
+      username: userInfo?.display_name ?? null,
+      avatar: userInfo?.avatar_url ?? null,
+      meta: { followers: userInfo?.follower_count ?? 0 },
+    });
+
     const response = NextResponse.redirect(
       `${process.env.NEXTAUTH_URL}/dashboard/accounts?connected=tiktok`
     );
@@ -85,7 +96,7 @@ export async function GET(request: NextRequest) {
       httpOnly: true,
       secure: true,
       sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 30, // 30 days
+      maxAge: 60 * 60 * 24 * 30,
     });
 
     return response;
