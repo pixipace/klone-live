@@ -14,6 +14,9 @@ import {
   CheckCircle2,
   Loader2,
   Trash2,
+  Sparkles,
+  Hash,
+  Wand2,
 } from "lucide-react";
 
 const platformIcons: Record<string, string> = {
@@ -39,7 +42,69 @@ export default function CreatePostPage() {
   } | null>(null);
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("");
+  const [aiTopic, setAiTopic] = useState("");
+  const [aiTone, setAiTone] = useState("friendly");
+  const [aiBusy, setAiBusy] = useState<"generate" | "rewrite" | "hashtags" | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const callAi = async (
+    mode: "generate" | "rewrite" | "hashtags",
+    body: Record<string, unknown>
+  ) => {
+    setAiBusy(mode);
+    setAiError(null);
+    try {
+      const res = await fetch("/api/ai/caption", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "AI failed");
+      return data as { caption?: string; hashtags?: string[] };
+    } catch (err) {
+      setAiError(String(err instanceof Error ? err.message : err));
+      return null;
+    } finally {
+      setAiBusy(null);
+    }
+  };
+
+  const aiGenerate = async () => {
+    if (!aiTopic.trim() || selectedPlatforms.length === 0) return;
+    const data = await callAi("generate", {
+      mode: "generate",
+      topic: aiTopic,
+      platform: selectedPlatforms[0],
+      tone: aiTone,
+      withHashtags: false,
+    });
+    if (data?.caption) setCaption(data.caption);
+  };
+
+  const aiRewrite = async () => {
+    if (!caption.trim() || selectedPlatforms.length === 0) return;
+    const data = await callAi("rewrite", {
+      mode: "rewrite",
+      draft: caption,
+      platform: selectedPlatforms[0],
+    });
+    if (data?.caption) setCaption(data.caption);
+  };
+
+  const aiHashtags = async () => {
+    if (!caption.trim() || selectedPlatforms.length === 0) return;
+    const data = await callAi("hashtags", {
+      mode: "rewrite",
+      draft: caption,
+      platform: selectedPlatforms[0],
+      withHashtags: true,
+    });
+    if (data?.hashtags?.length) {
+      setCaption((prev) => `${prev}\n\n${data.hashtags!.join(" ")}`);
+    }
+  };
 
   const togglePlatform = (id: PlatformId) => {
     setSelectedPlatforms((prev) =>
@@ -309,6 +374,100 @@ export default function CreatePostPage() {
               >
                 {caption.length} characters
               </span>
+            </div>
+          </Card>
+
+          {/* AI Assist */}
+          <Card>
+            <div className="flex items-center justify-between mb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-accent" />
+                AI Assist
+              </CardTitle>
+              <span className="text-[11px] text-muted">Powered by Gemma (local)</span>
+            </div>
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={aiTopic}
+                  onChange={(e) => setAiTopic(e.target.value)}
+                  placeholder="Topic — e.g. launching our new pricing"
+                  className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
+                />
+                <select
+                  value={aiTone}
+                  onChange={(e) => setAiTone(e.target.value)}
+                  className="bg-background border border-border rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="friendly">Friendly</option>
+                  <option value="professional">Professional</option>
+                  <option value="bold">Bold</option>
+                  <option value="witty">Witty</option>
+                  <option value="inspirational">Inspirational</option>
+                </select>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={aiGenerate}
+                  disabled={
+                    aiBusy !== null ||
+                    !aiTopic.trim() ||
+                    selectedPlatforms.length === 0
+                  }
+                  className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 font-medium rounded-lg border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {aiBusy === "generate" ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5" />
+                  )}
+                  Generate
+                </button>
+                <button
+                  type="button"
+                  onClick={aiRewrite}
+                  disabled={
+                    aiBusy !== null ||
+                    !caption.trim() ||
+                    selectedPlatforms.length === 0
+                  }
+                  className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 font-medium rounded-lg border border-border bg-card text-foreground hover:border-accent/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {aiBusy === "rewrite" ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Wand2 className="w-3.5 h-3.5" />
+                  )}
+                  Rewrite for {selectedPlatforms[0] || "platform"}
+                </button>
+                <button
+                  type="button"
+                  onClick={aiHashtags}
+                  disabled={
+                    aiBusy !== null ||
+                    !caption.trim() ||
+                    selectedPlatforms.length === 0
+                  }
+                  className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 font-medium rounded-lg border border-border bg-card text-foreground hover:border-accent/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {aiBusy === "hashtags" ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Hash className="w-3.5 h-3.5" />
+                  )}
+                  Add hashtags
+                </button>
+              </div>
+              {selectedPlatforms.length === 0 && (
+                <p className="text-[11px] text-muted-foreground">
+                  Pick a platform first — the AI tunes the caption to it.
+                </p>
+              )}
+              {aiError && (
+                <p className="text-[11px] text-error">{aiError}</p>
+              )}
             </div>
           </Card>
 
