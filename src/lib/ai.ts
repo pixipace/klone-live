@@ -195,6 +195,50 @@ Write the caption now. Pick ONE hook framework. Be specific. Don't describe — 
   return generate(prompt, system, { temperature: 0.7, maxTokens: 600 });
 }
 
+export async function generateCaptionVariants(
+  topic: string,
+  platform: Platform,
+  tone: string = "friendly",
+  count: number = 3
+): Promise<string[]> {
+  const system = `${COPYWRITER_ROLE}
+
+${FEW_SHOT_BAD_VS_GOOD}
+
+PLATFORM RULES:
+${PLATFORM_BRIEFS[platform]}
+
+Now you write ${count} DIFFERENT versions of the same caption — each one using a DIFFERENT hook framework. Variety matters: if version 1 is a curiosity-gap hook, version 2 must be contrarian or POV, version 3 must be a stat shock or confession. Do NOT just rephrase the same idea.
+
+Output STRICT JSON only:
+{"variants": ["caption 1", "caption 2", "caption 3"]}
+
+Each entry is the COMPLETE caption (with line breaks as \\n if needed, hashtags at end if appropriate). No preamble, no markdown fences.`;
+
+  const prompt = `Tone: ${tone}
+What the post is about: ${topic}
+
+Write ${count} variants now. Make each one feel different.`;
+
+  const raw = await generate(prompt, system, {
+    temperature: 0.85,
+    maxTokens: 1500,
+    format: "json",
+  });
+
+  try {
+    const parsed = JSON.parse(raw) as { variants?: unknown };
+    if (Array.isArray(parsed.variants)) {
+      return parsed.variants
+        .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+        .slice(0, count);
+    }
+  } catch {
+    // fall through
+  }
+  return [];
+}
+
 export async function rewriteForPlatform(
   draft: string,
   platform: Platform

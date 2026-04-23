@@ -45,12 +45,13 @@ export default function CreatePostPage() {
   const [aiTopic, setAiTopic] = useState("");
   const [aiTone, setAiTone] = useState("friendly");
   const [prefillBanner, setPrefillBanner] = useState<string | null>(null);
-  const [aiBusy, setAiBusy] = useState<"generate" | "rewrite" | "hashtags" | "media" | null>(null);
+  const [aiBusy, setAiBusy] = useState<"generate" | "rewrite" | "hashtags" | "media" | "variants" | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [aiVariants, setAiVariants] = useState<string[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const callAi = async (
-    mode: "generate" | "rewrite" | "hashtags" | "media",
+    mode: "generate" | "rewrite" | "hashtags" | "media" | "variants",
     body: Record<string, unknown>,
     endpoint = "/api/ai/caption"
   ) => {
@@ -64,13 +65,33 @@ export default function CreatePostPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "AI failed");
-      return data as { caption?: string; hashtags?: string[] };
+      return data as { caption?: string; captions?: string[]; hashtags?: string[] };
     } catch (err) {
       setAiError(String(err instanceof Error ? err.message : err));
       return null;
     } finally {
       setAiBusy(null);
     }
+  };
+
+  const aiGenerateVariants = async () => {
+    if (!aiTopic.trim() || selectedPlatforms.length === 0) return;
+    setAiVariants(null);
+    const data = await callAi("variants", {
+      mode: "generate",
+      topic: aiTopic,
+      platform: selectedPlatforms[0],
+      tone: aiTone,
+      variants: 3,
+    });
+    if (data?.captions && data.captions.length > 0) {
+      setAiVariants(data.captions);
+    }
+  };
+
+  const pickVariant = (text: string) => {
+    setCaption(text);
+    setAiVariants(null);
   };
 
   const aiCaptionFromMedia = async () => {
@@ -502,6 +523,23 @@ export default function CreatePostPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={aiGenerateVariants}
+                  disabled={
+                    aiBusy !== null ||
+                    !aiTopic.trim() ||
+                    selectedPlatforms.length === 0
+                  }
+                  className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 font-medium rounded-lg border border-accent/30 bg-accent/5 text-accent hover:bg-accent/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {aiBusy === "variants" ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5" />
+                  )}
+                  3 angles
+                </button>
+                <button
+                  type="button"
                   onClick={aiRewrite}
                   disabled={
                     aiBusy !== null ||
@@ -567,6 +605,36 @@ export default function CreatePostPage() {
               )}
               {aiError && (
                 <p className="text-[11px] text-error">{aiError}</p>
+              )}
+
+              {aiVariants && aiVariants.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-border">
+                  <p className="text-[11px] text-muted-foreground">
+                    Pick one. Each uses a different hook angle.
+                  </p>
+                  <div className="space-y-2">
+                    {aiVariants.map((v, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => pickVariant(v)}
+                        className="w-full text-left text-xs px-3 py-2 rounded-lg border border-border bg-background hover:border-accent/40 transition-colors whitespace-pre-wrap"
+                      >
+                        <span className="text-accent text-[10px] font-medium">
+                          ANGLE {i + 1}
+                        </span>
+                        <p className="mt-1 text-foreground line-clamp-6">{v}</p>
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAiVariants(null)}
+                    className="text-[11px] text-muted-foreground hover:text-foreground"
+                  >
+                    Hide variants
+                  </button>
+                </div>
               )}
             </div>
           </Card>

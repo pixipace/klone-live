@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import {
   generateCaption,
+  generateCaptionVariants,
   rewriteForPlatform,
   suggestHashtags,
   isOllamaUp,
@@ -28,13 +29,14 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { mode, topic, draft, platform, tone, withHashtags } = body as {
+  const { mode, topic, draft, platform, tone, withHashtags, variants } = body as {
     mode?: "generate" | "rewrite";
     topic?: string;
     draft?: string;
     platform?: string;
     tone?: string;
     withHashtags?: boolean;
+    variants?: number;
   };
 
   if (!isPlatform(platform)) {
@@ -42,6 +44,25 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    if (mode === "generate" && variants && variants > 1) {
+      if (!topic) {
+        return NextResponse.json({ error: "Missing topic" }, { status: 400 });
+      }
+      const captions = await generateCaptionVariants(
+        topic,
+        platform,
+        tone || "friendly",
+        Math.min(variants, 5)
+      );
+      if (captions.length === 0) {
+        return NextResponse.json(
+          { error: "AI returned no usable variants — try again or rephrase the topic" },
+          { status: 502 }
+        );
+      }
+      return NextResponse.json({ captions });
+    }
+
     let caption: string;
     if (mode === "rewrite") {
       if (!draft) {
