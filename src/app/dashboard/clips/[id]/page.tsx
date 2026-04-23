@@ -63,8 +63,8 @@ export default async function ClipJobDetail({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {job.clips.map((clip, i) => (
-            <Card key={clip.id} className="p-4">
-              <div className="flex items-start justify-between gap-2 mb-2">
+            <Card key={clip.id} className="p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
                 <span className="text-xs text-muted-foreground">
                   Clip {i + 1}
                 </span>
@@ -77,10 +77,32 @@ export default async function ClipJobDetail({
                   </span>
                 </div>
               </div>
-              <h3 className="text-base font-semibold mb-2 leading-snug">
+
+              {clip.videoPath ? (
+                <video
+                  src={clip.videoPath}
+                  poster={clip.thumbnailPath ?? undefined}
+                  controls
+                  preload="metadata"
+                  className="w-full rounded-lg bg-black aspect-[9/16] max-h-[480px] mx-auto"
+                />
+              ) : clip.thumbnailPath ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={clip.thumbnailPath}
+                  alt=""
+                  className="w-full rounded-lg object-cover aspect-[9/16] max-h-[480px] mx-auto"
+                />
+              ) : (
+                <div className="w-full rounded-lg bg-card border border-border aspect-[9/16] max-h-[480px] flex items-center justify-center text-xs text-muted-foreground">
+                  Cutting…
+                </div>
+              )}
+
+              <h3 className="text-base font-semibold leading-snug">
                 {clip.hookTitle}
               </h3>
-              <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
                 <span className="inline-flex items-center gap-1">
                   <Clock className="w-3 h-3" />
                   {formatTime(clip.startSec)} – {formatTime(clip.endSec)}
@@ -88,23 +110,32 @@ export default async function ClipJobDetail({
                 <span>· {Math.round(clip.durationSec)}s</span>
               </div>
               {clip.reason && (
-                <p className="text-xs text-muted-foreground mb-3 italic">
+                <p className="text-xs text-muted-foreground italic">
                   {clip.reason}
                 </p>
               )}
               {clip.transcript && (
-                <p className="text-xs text-foreground/80 line-clamp-3 mb-3">
+                <p className="text-xs text-foreground/80 line-clamp-3">
                   &ldquo;{clip.transcript.slice(0, 280)}
                   {clip.transcript.length > 280 ? "…" : ""}&rdquo;
                 </p>
               )}
               <div className="flex gap-2">
                 {clip.videoPath ? (
-                  <Button size="sm" disabled>
-                    Send to Compose (coming)
-                  </Button>
+                  <>
+                    <a
+                      href={clip.videoPath}
+                      download={`${clip.hookTitle.slice(0, 40).replace(/[^\w\s-]/g, "")}.mp4`}
+                      className="inline-flex items-center gap-1 text-xs px-3 py-1.5 font-medium rounded-lg border border-border hover:border-accent/30 transition-colors"
+                    >
+                      Download
+                    </a>
+                    <Button size="sm" disabled title="Coming in Stage 3">
+                      Send to Compose
+                    </Button>
+                  </>
                 ) : (
-                  <Badge variant="default">Video processing comes in Stage 2</Badge>
+                  <Badge variant="default">Video processing…</Badge>
                 )}
               </div>
             </Card>

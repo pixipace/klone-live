@@ -5,6 +5,9 @@ import { CLIPPER_DIRS } from "./types";
 import { downloadYouTube } from "./youtube";
 import { transcribe } from "./whisper";
 import { pickClips } from "./picker";
+import { cutVerticalClip } from "./cutter";
+
+const CLIP_OUTPUT_ROOT = path.join(process.cwd(), ".uploads", "clips");
 
 export async function runPipeline(jobId: string): Promise<void> {
   const job = await prisma.clipJob.findUnique({ where: { id: jobId } });
@@ -48,7 +51,7 @@ export async function runPipeline(jobId: string): Promise<void> {
       throw new Error("No viable clips found in transcript");
     }
 
-    await prisma.$transaction(
+    const createdClips = await prisma.$transaction(
       picks.map((p) =>
         prisma.clip.create({
           data: {
@@ -70,10 +73,50 @@ export async function runPipeline(jobId: string): Promise<void> {
 
     await prisma.clipJob.update({
       where: { id: jobId },
+      data: { stage: "CUTTING" },
+    });
+
+    const clipOutDir = path.join(CLIP_OUTPUT_ROOT, jobId);
+    let cutCount = 0;
+    let cutFails = 0;
+
+    for (let i = 0; i < createdClips.length; i++) {
+      const clip = createdClips[i];
+      const basename = `clip-${String(i + 1).padStart(2, "0")}-${clip.id.slice(0, 6)}`;
+      try {
+        const out = await cutVerticalClip(
+          dl.videoPath,
+          clip.startSec,
+          clip.endSec,
+          clipOutDir,
+          basename
+        );
+        await prisma.clip.update({
+          where: { id: clip.id },
+          data: {
+            videoPath: `/api/uploads/clips/${jobId}/${path.basename(out.videoPath)}`,
+            thumbnailPath: `/api/uploads/clips/${jobId}/${path.basename(out.thumbnailPath)}`,
+          },
+        });
+        cutCount += 1;
+      } catch (cutErr) {
+        cutFails += 1;
+        console.error(`[clipper] cut failed for clip ${clip.id}:`, cutErr);
+        // One clip failing is not fatal — keep going.
+      }
+    }
+
+    if (cutCount === 0) {
+      throw new Error("All clip cuts failed — see logs");
+    }
+
+    await prisma.clipJob.update({
+      where: { id: jobId },
       data: {
         status: "DONE",
         stage: "DONE",
         finishedAt: new Date(),
+        error: cutFails > 0 ? `${cutFails} clip(s) failed to cut` : null,
       },
     });
 
