@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PLATFORMS, PlatformId } from "@/lib/constants";
@@ -44,6 +44,7 @@ export default function CreatePostPage() {
   const [scheduleTime, setScheduleTime] = useState("");
   const [aiTopic, setAiTopic] = useState("");
   const [aiTone, setAiTone] = useState("friendly");
+  const [prefillBanner, setPrefillBanner] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState<"generate" | "rewrite" | "hashtags" | "media" | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -122,6 +123,32 @@ export default function CreatePostPage() {
       setCaption((prev) => `${prev}\n\n${data.hashtags!.join(" ")}`);
     }
   };
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem("klone:compose-prefill");
+    if (!raw) return;
+    try {
+      const data = JSON.parse(raw) as {
+        caption?: string;
+        mediaUrl?: string;
+        mediaType?: "image" | "video";
+        mediaName?: string;
+        ts?: number;
+      };
+      if (data.ts && Date.now() - data.ts > 5 * 60 * 1000) {
+        sessionStorage.removeItem("klone:compose-prefill");
+        return;
+      }
+      if (data.caption) setCaption(data.caption);
+      if (data.mediaUrl) setMediaUrl(data.mediaUrl);
+      if (data.mediaType) setMediaType(data.mediaType);
+      if (data.mediaName) setMediaName(data.mediaName);
+      setPrefillBanner("Loaded from Clip Studio — tweak the caption and pick platforms.");
+      sessionStorage.removeItem("klone:compose-prefill");
+    } catch {
+      sessionStorage.removeItem("klone:compose-prefill");
+    }
+  }, []);
 
   const togglePlatform = (id: PlatformId) => {
     setSelectedPlatforms((prev) =>
@@ -335,6 +362,13 @@ export default function CreatePostPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Result Banner */}
+      {prefillBanner && (
+        <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-accent/10 border border-accent/20 text-accent text-sm">
+          <CheckCircle2 className="w-4 h-4" />
+          {prefillBanner}
+        </div>
+      )}
+
       {postResult && (
         <div
           className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${
