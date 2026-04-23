@@ -7,7 +7,7 @@ type GenerateOptions = {
   temperature?: number;
   maxTokens?: number;
   format?: "json" | "text";
-  images?: string[]; // base64-encoded
+  images?: string[];
 };
 
 async function generate(
@@ -36,8 +36,9 @@ async function generate(
       think: false,
       format: opts.format,
       options: {
-        temperature: opts.temperature ?? 0.7,
+        temperature: opts.temperature ?? 0.85,
         num_predict: opts.maxTokens ?? 512,
+        top_p: 0.92,
       },
     }),
   });
@@ -50,48 +51,171 @@ async function generate(
   return (data.message?.content ?? "").trim();
 }
 
+const COPYWRITER_ROLE = `You write social media captions for a real human's account. You write like that human — a friend texting, not a brand announcing.
+
+YOUR ENEMY IS CORPORATE-AI VOICE. Banned phrases and patterns:
+- "Looking to ___? Here's why ___"
+- "In today's fast-paced world / world of ___"
+- "Discover the power of / Unlock your / Elevate your / Take ___ to the next level"
+- "Game-changer / revolutionary / cutting-edge / seamless / streamlined / robust"
+- "Let's talk about ___" / "Let's dive in"
+- "Are you ready to ___" / "Ready to ___?"
+- "We're excited to announce" / "Thrilled to share"
+- "The era of ___ is over. The era of ___ has arrived."
+- "Bridging the gap" / "scale your ___" / "level up"
+- Three balanced sentences in a row with the same length (vary aggressively — 4 words, then 12, then 2)
+- 🚀 at the end of any sentence (banned — use a different emoji or none)
+
+PICK ONE hook framework:
+- Curiosity gap: "I X-ed for Y days. Here's what nobody mentions."
+- Contrarian: "Hot take: most ___ are wrong about ___"
+- POV: "POV: you just ___"
+- Stat shock: "Did you know X% of ___?"
+- Story: "Yesterday I ___" / "Last week ___"
+- Direct question: "What's the one thing ___?"
+- Confession: "I'll be honest — ___"
+- Pain-point: "If you've ever ___, this is for you."
+
+WRITE LIKE A HUMAN:
+- Use contractions ("don't", "won't", "you're")
+- Specific nouns over abstract ("MacBook" not "device")
+- Vary sentence length aggressively (single words allowed: "Wild." "Honestly?")
+- ONE thought per line — heavy line breaks
+- If you wouldn't text it to a friend, don't write it
+
+OUTPUT FORMAT — STRICT:
+- ONLY the caption text. Nothing before. Nothing after.
+- NO "Caption:", "**Framework:**", "Here's your post:", or any header
+- NO meta commentary, NO explanation of choices
+- NO quote marks around the caption
+- The first character of your response is the first character of the caption.`;
+
 const PLATFORM_BRIEFS: Record<Platform, string> = {
-  linkedin:
-    "LinkedIn — professional tone, 1-3 short paragraphs, hook in line 1, line breaks between thoughts. No hashtag spam (3-5 max, end of post).",
-  facebook:
-    "Facebook — conversational, 1-2 paragraphs, question at the end to drive comments. 0-2 hashtags.",
-  instagram:
-    "Instagram — punchy first line as hook, short lines, emojis OK but sparing. 5-10 relevant hashtags at the end.",
-  tiktok:
-    "TikTok — very short caption (under 150 chars), trend-aware, 3-5 hashtags including 1-2 niche tags.",
-  youtube:
-    "YouTube Shorts — clickable title under 100 chars with #Shorts tag. Short description below if helpful.",
+  linkedin: `LinkedIn rules (2026):
+- Sweet spot: 1,200-2,000 chars (long-form wins; algo rewards dwell time)
+- HOOK in first 2 lines (only ~210 chars visible before "see more")
+- Heavy line breaks — every 1-2 sentences a new line. White space = readability.
+- Personal pronouns. Tell a story or share a contrarian take.
+- 3-5 hashtags MAX, niche/professional, at the end
+- NO links in the body — algo deprioritizes. Mention "link in comments" instead.
+- Avoid corporate jargon. Write like a real operator, not a brand account.`,
+  facebook: `Facebook rules (2026):
+- Sweet spot: 40-80 chars (engagement peaks short — algo penalizes long captions)
+- Conversational tone, like texting a friend
+- End with a SPECIFIC question to drive comments (the algo signal that matters most)
+- 0-2 hashtags MAX. More hurts reach.
+- Emojis welcome but not at the start.`,
+  instagram: `Instagram rules (2026):
+- HOOK in first 125 chars (truncated with "more" otherwise)
+- Sweet spot: 80-200 chars total for Reels, can go longer for carousels
+- Short lines, line breaks for breath, ONE thought per line
+- 5-10 hashtags (algo shifted away from 30 — niche over broad)
+- Hashtags at end of caption (not first comment — that's outdated)
+- Emojis OK but with purpose, not decoration`,
+  tiktok: `TikTok rules (2026):
+- VERY short: under 150 chars (only ~150 visible before "more")
+- Hook = curiosity gap or POV
+- 3-5 hashtags ONLY, mix 1-2 trending + 2-3 niche
+- Emojis welcome
+- Often ends mid-thought to drive video rewatches`,
+  youtube: `YouTube Shorts rules (2026):
+- TITLE format: ≤100 chars, MUST include #Shorts
+- Title is the hook — clickbait-worthy without being misleading
+- Description (separate, optional): 1-2 lines, key context, then 3-5 hashtags
+- Output the title only unless asked otherwise`,
 };
+
+const FEW_SHOT_BAD_VS_GOOD = `These pairs show the difference. Match the GOOD voice exactly — short lines, specific, human, sells the feeling.
+
+—
+
+BAD: "A photo of someone enjoying a coffee in a cozy cafe."
+GOOD: "Mondays don't stand a chance ☕
+
+Tag your coffee soulmate."
+
+—
+
+BAD: "Looking to upgrade your morning routine? Here's why our new blend is a game-changer."
+GOOD: "I drank this for 30 days.
+
+My 6am alarm doesn't scare me anymore.
+
+Try it. Worst case: better mornings. Best case: you become unbearable about coffee."
+
+—
+
+BAD: "Discover the power of our latest skincare line."
+GOOD: "Hot take: most 'glow-up' serums are expensive water.
+
+This one's not. I checked the ingredients. Then my mirror."
+
+—
+
+BAD: "A young woman holding a yoga mat, smiling at the camera."
+GOOD: "POV: you finally stopped saying 'I'll start Monday'
+
+(it was a Wednesday)"
+
+—
+
+BAD: "In today's fast-paced world, productivity matters more than ever. Our new app helps streamline your workflow."
+GOOD: "I tried 9 productivity apps in a month.
+
+Only one survived. The other 8 just made me feel guilty for not opening them."
+
+—
+
+BAD: "Excited to announce the launch of our new social media tool for entrepreneurs."
+GOOD: "Built this because I was sick of logging into 5 apps to post one thing.
+
+If that's you too — DM me. Beta opens this week."
+
+—
+
+Notice: short lines, line breaks for breathing, specific details, no buzzwords, ends on a hook or call to comment.`;
 
 export async function generateCaption(
   topic: string,
   platform: Platform,
   tone: string = "friendly"
 ): Promise<string> {
-  const system = `You are a social media copywriter. Write a single post caption for the given platform. Output only the caption text — no preamble, no quotes, no "Here's your caption:".`;
-  const prompt = `Platform brief: ${PLATFORM_BRIEFS[platform]}
-Tone: ${tone}
-Topic: ${topic}
+  const system = `${COPYWRITER_ROLE}
 
-Write the caption.`;
-  return generate(prompt, system, { temperature: 0.8 });
+${FEW_SHOT_BAD_VS_GOOD}
+
+PLATFORM RULES:
+${PLATFORM_BRIEFS[platform]}`;
+
+  const prompt = `Tone: ${tone}
+What the post is about: ${topic}
+
+Write the caption now. Pick ONE hook framework. Be specific. Don't describe — sell the moment.`;
+
+  return generate(prompt, system, { temperature: 0.7, maxTokens: 600 });
 }
 
 export async function rewriteForPlatform(
   draft: string,
   platform: Platform
 ): Promise<string> {
-  const system = `You rewrite social media drafts for specific platforms. Output only the rewritten caption — no preamble, no commentary.`;
-  const prompt = `Rewrite this draft for ${platform}.
+  const system = `${COPYWRITER_ROLE}
+
+${FEW_SHOT_BAD_VS_GOOD}
+
+PLATFORM RULES:
 ${PLATFORM_BRIEFS[platform]}
 
-Draft:
+Your job: take the draft below and rewrite it FOR THIS SPECIFIC PLATFORM. Keep the core message, but match the platform's voice, length, and hook style. If the draft is corporate or AI-flavored, fix that.`;
+
+  const prompt = `Draft:
 """
 ${draft}
 """
 
-Rewritten caption:`;
-  return generate(prompt, system, { temperature: 0.6 });
+Rewrite it now.`;
+
+  return generate(prompt, system, { temperature: 0.7, maxTokens: 600 });
 }
 
 export async function suggestHashtags(
@@ -99,23 +223,43 @@ export async function suggestHashtags(
   platform: Platform,
   count: number = 8
 ): Promise<string[]> {
-  const system = `You suggest relevant, high-discoverability hashtags. Output a JSON array of strings only — no preamble, no markdown.`;
-  const prompt = `Suggest ${count} hashtags for this ${platform} post. Mix broad and niche tags. Each hashtag must start with #.
+  const platformCount: Record<Platform, number> = {
+    facebook: 2,
+    linkedin: 4,
+    instagram: 8,
+    tiktok: 4,
+    youtube: 4,
+  };
+  const targetCount = Math.min(count, platformCount[platform]);
 
-Caption:
+  const system = `You suggest hashtags that real people search and use — NOT generic SEO bait. Output a JSON array of strings only — no preamble, no markdown, no commentary.
+
+Rules:
+- Mix: 30% broad (high-volume), 70% niche (low-volume but targeted)
+- For ${platform}, use exactly ${targetCount} hashtags
+- Each starts with #, no spaces, lowercase preferred
+- NEVER use these tired hashtags: #love #instagood #photooftheday #beautiful #happy #fashion #picoftheday #follow #like4like #instadaily — they're noise
+- Match the actual content, not the platform name (don't suggest #instagram on instagram)`;
+
+  const prompt = `Caption:
 """
 ${caption}
 """
 
-Output a JSON array like: ["#tag1", "#tag2", ...]`;
+Output a JSON array of ${targetCount} hashtags: ["#tag1", "#tag2", ...]`;
+
   const raw = await generate(prompt, system, {
     temperature: 0.4,
     format: "json",
+    maxTokens: 200,
   });
+
   try {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      return parsed.filter((t): t is string => typeof t === "string");
+      return parsed
+        .filter((t): t is string => typeof t === "string" && t.startsWith("#"))
+        .slice(0, targetCount);
     }
   } catch {
     // fall through
@@ -123,7 +267,7 @@ Output a JSON array like: ["#tag1", "#tag2", ...]`;
   return raw
     .split(/[\s,]+/)
     .filter((t) => t.startsWith("#"))
-    .slice(0, count);
+    .slice(0, targetCount);
 }
 
 export type ParsedIntent =
@@ -163,15 +307,31 @@ export async function generateCaptionFromImage(
   tone: string = "friendly",
   extraContext?: string
 ): Promise<string> {
-  const system = `You are a social media copywriter. Look at the image and write a single post caption for the given platform. Output only the caption text — no preamble, no quotes, no "Here's your caption:".`;
-  const prompt = `Platform brief: ${PLATFORM_BRIEFS[platform]}
-Tone: ${tone}
-${extraContext ? `Extra context from the user: ${extraContext}\n` : ""}
-Look at the image and write a caption that fits what's actually shown — be specific to the visual content, not generic.`;
+  const system = `${COPYWRITER_ROLE}
+
+${FEW_SHOT_BAD_VS_GOOD}
+
+PLATFORM RULES:
+${PLATFORM_BRIEFS[platform]}
+
+CRITICAL FOR IMAGE CAPTIONS:
+1. DO NOT describe what you see. ("A woman holding a coffee" — banned.)
+2. Identify the marketable moment, vibe, or product in the image — then SELL IT.
+3. Write like the person/brand in the image is paying you to make people want what they have.
+4. The image gives you context. The caption converts that context into desire, emotion, or intrigue.
+5. Treat yourself as a viral copywriter who happens to have seen the image — not a vision model proving it can see.`;
+
+  const prompt = `Tone: ${tone}
+${extraContext ? `\nExtra context from the user (use this — it's the angle they want): ${extraContext}\n` : ""}
+Look at the image, find the marketable moment, then write the caption.
+
+Pick ONE hook framework. Be specific to what you see, but DON'T describe it. SELL it.
+
+Write the caption now.`;
 
   return generate(prompt, system, {
-    temperature: 0.8,
-    maxTokens: 512,
+    temperature: 0.7,
+    maxTokens: 600,
     images: [imageBase64],
   });
 }
