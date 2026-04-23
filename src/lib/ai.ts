@@ -7,6 +7,7 @@ type GenerateOptions = {
   temperature?: number;
   maxTokens?: number;
   format?: "json" | "text";
+  images?: string[]; // base64-encoded
 };
 
 async function generate(
@@ -14,6 +15,14 @@ async function generate(
   system: string,
   opts: GenerateOptions = {}
 ): Promise<string> {
+  const userMessage: { role: "user"; content: string; images?: string[] } = {
+    role: "user",
+    content: prompt,
+  };
+  if (opts.images && opts.images.length > 0) {
+    userMessage.images = opts.images;
+  }
+
   const res = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -21,7 +30,7 @@ async function generate(
       model: OLLAMA_MODEL,
       messages: [
         { role: "system", content: system },
-        { role: "user", content: prompt },
+        userMessage,
       ],
       stream: false,
       think: false,
@@ -146,6 +155,25 @@ Output the JSON.`;
   } catch {
     return { kind: "unknown", text: message };
   }
+}
+
+export async function generateCaptionFromImage(
+  imageBase64: string,
+  platform: Platform,
+  tone: string = "friendly",
+  extraContext?: string
+): Promise<string> {
+  const system = `You are a social media copywriter. Look at the image and write a single post caption for the given platform. Output only the caption text — no preamble, no quotes, no "Here's your caption:".`;
+  const prompt = `Platform brief: ${PLATFORM_BRIEFS[platform]}
+Tone: ${tone}
+${extraContext ? `Extra context from the user: ${extraContext}\n` : ""}
+Look at the image and write a caption that fits what's actually shown — be specific to the visual content, not generic.`;
+
+  return generate(prompt, system, {
+    temperature: 0.8,
+    maxTokens: 512,
+    images: [imageBase64],
+  });
 }
 
 export async function isOllamaUp(): Promise<boolean> {

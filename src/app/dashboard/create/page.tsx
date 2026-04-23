@@ -44,18 +44,19 @@ export default function CreatePostPage() {
   const [scheduleTime, setScheduleTime] = useState("");
   const [aiTopic, setAiTopic] = useState("");
   const [aiTone, setAiTone] = useState("friendly");
-  const [aiBusy, setAiBusy] = useState<"generate" | "rewrite" | "hashtags" | null>(null);
+  const [aiBusy, setAiBusy] = useState<"generate" | "rewrite" | "hashtags" | "media" | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const callAi = async (
-    mode: "generate" | "rewrite" | "hashtags",
-    body: Record<string, unknown>
+    mode: "generate" | "rewrite" | "hashtags" | "media",
+    body: Record<string, unknown>,
+    endpoint = "/api/ai/caption"
   ) => {
     setAiBusy(mode);
     setAiError(null);
     try {
-      const res = await fetch("/api/ai/caption", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -69,6 +70,22 @@ export default function CreatePostPage() {
     } finally {
       setAiBusy(null);
     }
+  };
+
+  const aiCaptionFromMedia = async () => {
+    if (!mediaUrl || mediaType !== "image" || selectedPlatforms.length === 0) return;
+    const data = await callAi(
+      "media",
+      {
+        mediaUrl,
+        mediaType,
+        platform: selectedPlatforms[0],
+        tone: aiTone,
+        context: aiTopic.trim() || undefined,
+      },
+      "/api/ai/caption-from-media"
+    );
+    if (data?.caption) setCaption(data.caption);
   };
 
   const aiGenerate = async () => {
@@ -482,6 +499,31 @@ export default function CreatePostPage() {
                     <Hash className="w-3.5 h-3.5" />
                   )}
                   Add hashtags
+                </button>
+                <button
+                  type="button"
+                  onClick={aiCaptionFromMedia}
+                  disabled={
+                    aiBusy !== null ||
+                    !mediaUrl ||
+                    mediaType !== "image" ||
+                    selectedPlatforms.length === 0
+                  }
+                  title={
+                    mediaType === "video"
+                      ? "Video captioning coming soon — uses Whisper for audio"
+                      : !mediaUrl
+                        ? "Upload an image first"
+                        : ""
+                  }
+                  className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 font-medium rounded-lg border border-accent/30 bg-accent/5 text-accent hover:bg-accent/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {aiBusy === "media" ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <ImageIcon className="w-3.5 h-3.5" />
+                  )}
+                  Caption from image
                 </button>
               </div>
               {selectedPlatforms.length === 0 && (
