@@ -182,6 +182,22 @@ export default async function PostsPage({
                           );
                         }
                         if (link?.error) {
+                          const isAuthErr =
+                            /token|auth|expired|401|403|invalid_grant|reconnect|reauth|unauthorized/i.test(
+                              link.error
+                            );
+                          if (isAuthErr) {
+                            return (
+                              <a
+                                key={p}
+                                href="/dashboard/accounts"
+                                title={link.error}
+                                className="text-[11px] px-2 py-0.5 rounded bg-warning/10 text-warning hover:bg-warning/15 inline-flex items-center gap-1 transition-colors"
+                              >
+                                {p} — reconnect
+                              </a>
+                            );
+                          }
                           return (
                             <span
                               key={p}

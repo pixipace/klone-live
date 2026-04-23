@@ -32,7 +32,9 @@ function shouldRefresh(account: SocialAccount): boolean {
 }
 
 async function refreshGoogle(account: SocialAccount): Promise<SocialAccount> {
-  if (!account.refreshToken) return account;
+  if (!account.refreshToken) {
+    throw new Error("Google refresh token missing — please reconnect YouTube");
+  }
 
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -60,7 +62,9 @@ async function refreshGoogle(account: SocialAccount): Promise<SocialAccount> {
 }
 
 async function refreshTikTok(account: SocialAccount): Promise<SocialAccount> {
-  if (!account.refreshToken) return account;
+  if (!account.refreshToken) {
+    throw new Error("TikTok refresh token missing — please reconnect TikTok");
+  }
 
   const res = await fetch("https://open.tiktokapis.com/v2/oauth/token/", {
     method: "POST",
