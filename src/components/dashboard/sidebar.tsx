@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   PenSquare,
+  Scissors,
   Calendar,
   Users,
   Settings,
@@ -18,6 +19,7 @@ import {
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/create", label: "Create", icon: PenSquare },
+  { href: "/dashboard/clips", label: "Clip Studio", icon: Scissors },
   { href: "/dashboard/posts", label: "Posts", icon: Calendar },
   { href: "/dashboard/insights", label: "Insights", icon: BarChart3 },
   { href: "/dashboard/comments", label: "Comments", icon: MessageCircle },

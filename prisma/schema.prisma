@@ -18,6 +18,47 @@ model User {
   updatedAt      DateTime        @updatedAt
   socialAccounts SocialAccount[]
   posts          Post[]
+  clipJobs       ClipJob[]
+}
+
+model ClipJob {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceUrl       String
+  sourceTitle     String?
+  sourceDuration  Int?
+  status          String    @default("QUEUED")
+  stage           String?
+  error           String?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  clips           Clip[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model Clip {
+  id             String   @id @default(cuid())
+  jobId          String
+  job            ClipJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  startSec       Float
+  endSec         Float
+  durationSec    Float
+  hookTitle      String
+  hookVariants   String?
+  reason         String?
+  viralityScore  Int
+  transcript     String?
+  videoPath      String?
+  thumbnailPath  String?
+  posted         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([jobId])
 }
 
 model SocialAccount {
