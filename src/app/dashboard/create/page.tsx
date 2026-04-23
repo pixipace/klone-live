@@ -181,6 +181,14 @@ export default function CreatePostPage() {
     setPosting(true);
     setPostResult(null);
 
+    let scheduledFor: string | null = null;
+    if (scheduleDate && scheduleTime) {
+      const local = new Date(`${scheduleDate}T${scheduleTime}`);
+      if (!Number.isNaN(local.getTime()) && local.getTime() > Date.now()) {
+        scheduledFor = local.toISOString();
+      }
+    }
+
     try {
       const response = await fetch("/api/posts", {
         method: "POST",
@@ -190,8 +198,7 @@ export default function CreatePostPage() {
           mediaUrl,
           mediaType,
           platforms: selectedPlatforms,
-          scheduleDate,
-          scheduleTime,
+          scheduledFor,
         }),
       });
 
@@ -199,6 +206,23 @@ export default function CreatePostPage() {
 
       if (data.error) {
         throw new Error(data.error);
+      }
+
+      if (data.scheduled) {
+        const when = new Date(data.scheduledFor).toLocaleString();
+        setPostResult({
+          success: true,
+          message: `Scheduled for ${when}. Will post automatically.`,
+        });
+        setCaption("");
+        setMediaUrl(null);
+        setMediaType(null);
+        setMediaName("");
+        setSelectedPlatforms([]);
+        setScheduleDate("");
+        setScheduleTime("");
+        setPosting(false);
+        return;
       }
 
       const succeeded: string[] = [];

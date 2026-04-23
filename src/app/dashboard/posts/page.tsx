@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, PenSquare, ExternalLink } from "lucide-react";
+import { Calendar, PenSquare, ExternalLink, Clock } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -10,13 +10,26 @@ import { formatDistanceToNow } from "date-fns";
 
 export const dynamic = "force-dynamic";
 
-const STATUS_LABEL: Record<string, { label: string; variant: "success" | "warning" | "error" | "default" | "accent" }> = {
+const STATUS_LABEL: Record<
+  string,
+  { label: string; variant: "success" | "warning" | "error" | "default" | "accent" }
+> = {
   POSTED: { label: "Published", variant: "success" },
   PARTIAL: { label: "Partial", variant: "warning" },
   POSTING: { label: "Posting…", variant: "accent" },
+  SCHEDULED: { label: "Scheduled", variant: "accent" },
   FAILED: { label: "Failed", variant: "error" },
   DRAFT: { label: "Draft", variant: "default" },
 };
+
+const FILTERS = [
+  { id: "all", label: "All", statuses: null },
+  { id: "scheduled", label: "Scheduled", statuses: ["SCHEDULED"] },
+  { id: "published", label: "Published", statuses: ["POSTED", "PARTIAL"] },
+  { id: "failed", label: "Failed", statuses: ["FAILED"] },
+] as const;
+
+type FilterId = (typeof FILTERS)[number]["id"];
 
 type PlatformLink = { platform: string; url?: string; error?: string };
 
@@ -37,13 +50,27 @@ function parseResults(raw: string | null): PlatformLink[] {
   }
 }
 
-export default async function PostsPage() {
+export default async function PostsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ filter?: string }>;
+}) {
   const session = await getSession();
   if (!session) redirect("/login");
 
+  const sp = await searchParams;
+  const filter = (FILTERS.find((f) => f.id === sp.filter)?.id ?? "all") as FilterId;
+  const filterDef = FILTERS.find((f) => f.id === filter)!;
+
   const posts = await prisma.post.findMany({
-    where: { userId: session.id },
-    orderBy: { createdAt: "desc" },
+    where: {
+      userId: session.id,
+      ...(filterDef.statuses && { status: { in: [...filterDef.statuses] } }),
+    },
+    orderBy:
+      filter === "scheduled"
+        ? { scheduledFor: "asc" }
+        : { createdAt: "desc" },
     take: 100,
   });
 
@@ -59,14 +86,33 @@ export default async function PostsPage() {
         </Link>
       </div>
 
+      <div className="flex gap-2">
+        {FILTERS.map((f) => (
+          <Link
+            key={f.id}
+            href={f.id === "all" ? "/dashboard/posts" : `/dashboard/posts?filter=${f.id}`}
+            className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+              filter === f.id
+                ? "bg-accent/10 text-accent"
+                : "text-muted-foreground hover:text-foreground hover:bg-card"
+            }`}
+          >
+            {f.label}
+          </Link>
+        ))}
+      </div>
+
       {posts.length === 0 ? (
         <Card>
           <div className="text-center py-16">
             <Calendar className="w-12 h-12 text-muted mx-auto mb-4" />
-            <h3 className="text-lg font-medium">No posts yet</h3>
+            <h3 className="text-lg font-medium">
+              {filter === "all" ? "No posts yet" : `No ${filterDef.label.toLowerCase()} posts`}
+            </h3>
             <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
-              Create your first post to start publishing content to your social
-              media accounts.
+              {filter === "all"
+                ? "Create your first post to start publishing content to your social media accounts."
+                : "Switch filters or create a new post."}
             </p>
             <Link href="/dashboard/create" className="inline-block mt-6">
               <Button>
@@ -83,6 +129,7 @@ export default async function PostsPage() {
             const platforms = post.platforms ? post.platforms.split(",") : [];
             const links = parseResults(post.results);
             const linkByPlatform = new Map(links.map((l) => [l.platform, l]));
+            const isScheduled = post.status === "SCHEDULED";
             return (
               <Card key={post.id} className="p-4">
                 <div className="flex items-start gap-4">
@@ -97,14 +144,24 @@ export default async function PostsPage() {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <Badge variant={status.variant}>{status.label}</Badge>
+                      {isScheduled && post.scheduledFor && (
+                        <span className="text-xs text-accent inline-flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {new Date(post.scheduledFor).toLocaleString()}
+                        </span>
+                      )}
                       <span className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(post.createdAt, { addSuffix: true })}
+                        {isScheduled
+                          ? `created ${formatDistanceToNow(post.createdAt, { addSuffix: true })}`
+                          : formatDistanceToNow(post.createdAt, { addSuffix: true })}
                       </span>
                     </div>
                     <p className="text-sm text-foreground line-clamp-2 mb-2">
-                      {post.caption || <span className="text-muted-foreground">No caption</span>}
+                      {post.caption || (
+                        <span className="text-muted-foreground">No caption</span>
+                      )}
                     </p>
                     <div className="flex gap-1.5 flex-wrap">
                       {platforms.map((p) => {

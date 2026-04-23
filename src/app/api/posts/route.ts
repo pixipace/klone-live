@@ -1,21 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { unlink } from "fs/promises";
-import path from "path";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import {
-  ALL_PLATFORMS,
-  type PlatformId,
-  type PlatformResult,
-  platformPosters,
-} from "@/lib/platforms";
-import { ensureFreshToken } from "@/lib/platforms/refresh";
-
-const PLATFORM_SET = new Set<PlatformId>(ALL_PLATFORMS);
-
-function isKnownPlatform(p: unknown): p is PlatformId {
-  return typeof p === "string" && PLATFORM_SET.has(p as PlatformId);
-}
+import { firePost, isKnownPlatform } from "@/lib/post-runner";
 
 export async function POST(request: NextRequest) {
   let postId: string | null = null;
@@ -27,11 +13,12 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { caption, mediaUrl, mediaType, platforms } = body as {
+    const { caption, mediaUrl, mediaType, platforms, scheduledFor } = body as {
       caption?: string;
       mediaUrl?: string;
       mediaType?: "image" | "video" | null;
       platforms?: unknown[];
+      scheduledFor?: string | null;
     };
 
     const requested = Array.isArray(platforms)
@@ -45,10 +32,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const accounts = await prisma.socialAccount.findMany({
-      where: { userId: session.id, platform: { in: requested } },
-    });
-    const accountMap = new Map(accounts.map((a) => [a.platform, a]));
+    let scheduleDate: Date | null = null;
+    if (scheduledFor) {
+      const d = new Date(scheduledFor);
+      if (Number.isNaN(d.getTime())) {
+        return NextResponse.json(
+          { error: "Invalid scheduledFor date" },
+          { status: 400 }
+        );
+      }
+      if (d.getTime() > Date.now() + 30_000) {
+        scheduleDate = d;
+      }
+    }
 
     const created = await prisma.post.create({
       data: {
@@ -57,57 +53,27 @@ export async function POST(request: NextRequest) {
         mediaUrl: mediaUrl ?? null,
         mediaType: mediaType ?? null,
         platforms: requested.join(","),
-        status: "POSTING",
+        status: scheduleDate ? "SCHEDULED" : "POSTING",
+        scheduledFor: scheduleDate,
       },
     });
     postId = created.id;
 
-    const results: Record<string, PlatformResult> = {};
-
-    for (const platform of requested) {
-      const account = accountMap.get(platform);
-      if (!account) {
-        results[platform] = {
-          error: `${platform} not connected. Connect from Accounts.`,
-        };
-        continue;
-      }
-      try {
-        const fresh = await ensureFreshToken(account);
-        results[platform] = await platformPosters[platform]({
-          account: fresh,
-          caption: caption ?? "",
-          mediaUrl,
-          mediaType: mediaType ?? null,
-        });
-      } catch (err) {
-        console.error(`${platform} post error:`, err);
-        results[platform] = { error: String(err) };
-      }
+    if (scheduleDate) {
+      return NextResponse.json({
+        success: true,
+        postId,
+        scheduled: true,
+        scheduledFor: scheduleDate.toISOString(),
+      });
     }
 
-    const entries = Object.values(results);
-    const failed = entries.filter((r) => "error" in r).length;
-    const succeeded = entries.length - failed;
-    const status =
-      failed === 0 ? "POSTED" : succeeded === 0 ? "FAILED" : "PARTIAL";
-
-    await prisma.post.update({
-      where: { id: postId },
-      data: {
-        status,
-        results: JSON.stringify(results),
-        postedAt: status === "FAILED" ? null : new Date(),
-      },
+    const result = await firePost(created);
+    return NextResponse.json({
+      success: true,
+      postId,
+      results: result.results,
     });
-
-    if (succeeded > 0 && mediaUrl?.startsWith("/api/uploads/")) {
-      const filename = mediaUrl.replace("/api/uploads/", "");
-      const filePath = path.join(process.cwd(), ".uploads", filename);
-      unlink(filePath).catch(() => {});
-    }
-
-    return NextResponse.json({ success: true, postId, results });
   } catch (err) {
     console.error("Post creation error:", err);
     if (postId) {
