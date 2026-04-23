@@ -18,13 +18,19 @@ Banned: clips that are introductions ("welcome to the show"), goodbyes, generic 
 
 Pick variable count — could be 3 clips from a 15-min interview, could be 8 from a 60-min one. Quality over quantity.
 
+For EACH clip, write THREE different hook titles using DIFFERENT angles:
+- hookTitles[0]: question or curiosity gap ("Why does ___?", "The truth about ___")
+- hookTitles[1]: contrarian or hot take ("Most people are wrong about ___", "Stop doing ___")
+- hookTitles[2]: stat shock or POV ("97% of people ___", "POV: you just ___")
+Each title 6-12 words. NO emojis in titles. NO ALL CAPS. Specific over generic.
+
 Output STRICT JSON:
 {
   "clips": [
     {
       "startSec": <number>,
       "endSec": <number>,
-      "hookTitle": "<10-12 word click-worthy title, no quotes inside>",
+      "hookTitles": ["<question hook>", "<contrarian hook>", "<stat/POV hook>"],
       "reason": "<1-sentence why this clip works>",
       "viralityScore": <1-10 integer>
     }
@@ -36,6 +42,7 @@ Rules:
 - Each clip 20-90 seconds long
 - Clips MUST NOT overlap each other
 - viralityScore: 9-10 = standout, 7-8 = strong, 5-6 = decent, below 5 = don't include
+- hookTitles array MUST have exactly 3 different angles
 - Return only the JSON object. No preamble, no markdown fences.`;
 
 function formatSegments(segments: WhisperSegment[]): string {
@@ -95,23 +102,41 @@ Output the JSON.`;
   }
 
   return parsed.clips
-    .filter(
-      (c): c is ClipPick =>
-        typeof c === "object" &&
-        c !== null &&
-        typeof c.startSec === "number" &&
-        typeof c.endSec === "number" &&
-        c.endSec > c.startSec &&
-        c.endSec - c.startSec >= 10 &&
-        c.endSec - c.startSec <= 120 &&
-        typeof c.hookTitle === "string" &&
-        typeof c.viralityScore === "number"
-    )
-    .map((c) => ({
-      ...c,
-      hookTitle: c.hookTitle.slice(0, 200),
-      reason: (c.reason || "").slice(0, 300),
-      viralityScore: Math.max(1, Math.min(10, Math.round(c.viralityScore))),
-    }))
+    .map((c) => {
+      // Backwards-compat: accept either hookTitles[] or single hookTitle.
+      const raw = c as unknown as {
+        startSec?: number;
+        endSec?: number;
+        hookTitle?: string;
+        hookTitles?: string[];
+        reason?: string;
+        viralityScore?: number;
+      };
+      const titles = Array.isArray(raw.hookTitles)
+        ? raw.hookTitles.filter((t): t is string => typeof t === "string")
+        : raw.hookTitle
+          ? [raw.hookTitle]
+          : [];
+      if (
+        typeof raw.startSec !== "number" ||
+        typeof raw.endSec !== "number" ||
+        raw.endSec <= raw.startSec ||
+        raw.endSec - raw.startSec < 10 ||
+        raw.endSec - raw.startSec > 120 ||
+        titles.length === 0 ||
+        typeof raw.viralityScore !== "number"
+      ) {
+        return null;
+      }
+      return {
+        startSec: raw.startSec,
+        endSec: raw.endSec,
+        hookTitle: titles[0].slice(0, 200),
+        hookVariants: titles.slice(0, 3).map((t) => t.slice(0, 200)),
+        reason: (raw.reason || "").slice(0, 300),
+        viralityScore: Math.max(1, Math.min(10, Math.round(raw.viralityScore))),
+      };
+    })
+    .filter((c): c is ClipPick => c !== null)
     .sort((a, b) => a.startSec - b.startSec);
 }

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { probeYouTubeDuration } from "@/lib/clipper/youtube";
 
 const YT_RE = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be|m\.youtube\.com)\//i;
+const MAX_SOURCE_SEC = 30 * 60;
 
 export async function GET() {
   const session = await getSession();
@@ -54,10 +56,32 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  let durationSec = 0;
+  try {
+    durationSec = await probeYouTubeDuration(sourceUrl.trim());
+  } catch (err) {
+    return NextResponse.json(
+      { error: `Could not load video metadata: ${String(err).slice(0, 200)}` },
+      { status: 400 }
+    );
+  }
+
+  if (durationSec > MAX_SOURCE_SEC) {
+    return NextResponse.json(
+      {
+        error: `Video is ${Math.round(durationSec / 60)} min. Max source length is ${
+          MAX_SOURCE_SEC / 60
+        } min.`,
+      },
+      { status: 400 }
+    );
+  }
+
   const job = await prisma.clipJob.create({
     data: {
       userId: session.id,
       sourceUrl: sourceUrl.trim(),
+      sourceDuration: Math.round(durationSec),
       status: "QUEUED",
     },
   });

@@ -13,6 +13,7 @@ export type ClipPick = {
   startSec: number;
   endSec: number;
   hookTitle: string;
+  hookVariants: string[];
   reason: string;
   viralityScore: number;
 };

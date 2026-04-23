@@ -60,6 +60,10 @@ export async function runPipeline(jobId: string): Promise<void> {
             endSec: p.endSec,
             durationSec: p.endSec - p.startSec,
             hookTitle: p.hookTitle,
+            hookVariants:
+              p.hookVariants.length > 0
+                ? JSON.stringify(p.hookVariants)
+                : null,
             reason: p.reason,
             viralityScore: p.viralityScore,
             transcript: transcript.segments

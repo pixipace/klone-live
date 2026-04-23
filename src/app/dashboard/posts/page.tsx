@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
+import { RetryButton } from "./retry-button";
 
 export const dynamic = "force-dynamic";
 
@@ -201,6 +202,23 @@ export default async function PostsPage({
                         );
                       })}
                     </div>
+                    {(() => {
+                      const failedPlatforms = links
+                        .filter((l) => l.error)
+                        .map((l) => l.platform);
+                      if (
+                        (post.status === "FAILED" || post.status === "PARTIAL") &&
+                        failedPlatforms.length > 0
+                      ) {
+                        return (
+                          <RetryButton
+                            postId={post.id}
+                            failedPlatforms={failedPlatforms}
+                          />
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 </div>
               </Card>

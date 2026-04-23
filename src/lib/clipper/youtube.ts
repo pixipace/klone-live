@@ -25,6 +25,20 @@ function run(cmd: string, args: string[]): Promise<{ stdout: string; stderr: str
   });
 }
 
+export async function probeYouTubeDuration(url: string): Promise<number> {
+  const { stdout } = await run("yt-dlp", [
+    "--no-playlist",
+    "--print",
+    "%(duration)s",
+    url,
+  ]);
+  const sec = parseFloat(stdout.trim());
+  if (!Number.isFinite(sec) || sec <= 0) {
+    throw new Error("Could not determine video duration");
+  }
+  return sec;
+}
+
 export async function downloadYouTube(
   url: string,
   jobId: string

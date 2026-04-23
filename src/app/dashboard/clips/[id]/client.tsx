@@ -1,11 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ExternalLink, Flame, Clock, Send } from "lucide-react";
+import { ArrowLeft, ExternalLink, Flame, Clock, Send, Sparkles, Check } from "lucide-react";
 
 export type ClipDetail = {
   id: string;
@@ -13,6 +14,7 @@ export type ClipDetail = {
   endSec: number;
   durationSec: number;
   hookTitle: string;
+  hookVariants: string[];
   reason: string | null;
   viralityScore: number;
   transcript: string | null;
@@ -27,6 +29,78 @@ export type JobDetail = {
   clips: ClipDetail[];
 };
 
+function HookPicker({
+  jobId,
+  clip,
+  onUpdate,
+}: {
+  jobId: string;
+  clip: ClipDetail;
+  onUpdate: (newTitle: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  if (clip.hookVariants.length <= 1) return null;
+
+  const choose = async (title: string) => {
+    if (title === clip.hookTitle) {
+      setOpen(false);
+      return;
+    }
+    setBusy(title);
+    try {
+      const res = await fetch(`/api/clips/${jobId}/clip/${clip.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hookTitle: title }),
+      });
+      if (res.ok) {
+        onUpdate(title);
+        setOpen(false);
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="text-[11px] text-accent hover:text-accent/80 inline-flex items-center gap-1"
+      >
+        <Sparkles className="w-3 h-3" />
+        {open ? "Hide variants" : `Try ${clip.hookVariants.length - 1} other hook${clip.hookVariants.length > 2 ? "s" : ""}`}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-1.5">
+          {clip.hookVariants.map((v, i) => {
+            const isCurrent = v === clip.hookTitle;
+            return (
+              <button
+                key={i}
+                onClick={() => choose(v)}
+                disabled={busy === v}
+                className={`w-full text-left text-xs px-2 py-1.5 rounded border transition-colors ${
+                  isCurrent
+                    ? "border-accent bg-accent/5 text-foreground"
+                    : "border-border bg-background hover:border-accent/30"
+                } ${busy === v ? "opacity-50" : ""}`}
+              >
+                <div className="flex items-start gap-1.5">
+                  {isCurrent && <Check className="w-3 h-3 text-accent flex-shrink-0 mt-0.5" />}
+                  <span>{v}</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function formatTime(s: number): string {
   const m = Math.floor(s / 60);
   const sec = Math.floor(s % 60);
@@ -35,11 +109,14 @@ function formatTime(s: number): string {
 
 export function ClipDetailClient({ job }: { job: JobDetail }) {
   const router = useRouter();
+  const [titles, setTitles] = useState<Record<string, string>>(() =>
+    Object.fromEntries(job.clips.map((c) => [c.id, c.hookTitle]))
+  );
 
   const sendToCompose = (clip: ClipDetail) => {
     if (!clip.videoPath) return;
     const payload = {
-      caption: clip.hookTitle,
+      caption: titles[clip.id] ?? clip.hookTitle,
       mediaUrl: clip.videoPath,
       mediaType: "video" as const,
       mediaName: `Clip from ${job.sourceTitle || "source"}`,
@@ -118,8 +195,15 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
               )}
 
               <h3 className="text-base font-semibold leading-snug">
-                {clip.hookTitle}
+                {titles[clip.id] ?? clip.hookTitle}
               </h3>
+              <HookPicker
+                jobId={job.id}
+                clip={{ ...clip, hookTitle: titles[clip.id] ?? clip.hookTitle }}
+                onUpdate={(newTitle) =>
+                  setTitles((prev) => ({ ...prev, [clip.id]: newTitle }))
+                }
+              />
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
                 <span className="inline-flex items-center gap-1">
                   <Clock className="w-3 h-3" />

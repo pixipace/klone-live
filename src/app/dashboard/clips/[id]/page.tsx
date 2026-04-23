@@ -28,18 +28,31 @@ export default async function ClipJobDetail({
         id: job.id,
         sourceUrl: job.sourceUrl,
         sourceTitle: job.sourceTitle,
-        clips: job.clips.map((c) => ({
-          id: c.id,
-          startSec: c.startSec,
-          endSec: c.endSec,
-          durationSec: c.durationSec,
-          hookTitle: c.hookTitle,
-          reason: c.reason,
-          viralityScore: c.viralityScore,
-          transcript: c.transcript,
-          videoPath: c.videoPath,
-          thumbnailPath: c.thumbnailPath,
-        })),
+        clips: job.clips.map((c) => {
+          let hookVariants: string[] = [];
+          if (c.hookVariants) {
+            try {
+              const parsed = JSON.parse(c.hookVariants);
+              if (Array.isArray(parsed))
+                hookVariants = parsed.filter((t): t is string => typeof t === "string");
+            } catch {
+              // ignore
+            }
+          }
+          return {
+            id: c.id,
+            startSec: c.startSec,
+            endSec: c.endSec,
+            durationSec: c.durationSec,
+            hookTitle: c.hookTitle,
+            hookVariants,
+            reason: c.reason,
+            viralityScore: c.viralityScore,
+            transcript: c.transcript,
+            videoPath: c.videoPath,
+            thumbnailPath: c.thumbnailPath,
+          };
+        }),
       }}
     />
   );
