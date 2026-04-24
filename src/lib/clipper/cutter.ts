@@ -291,15 +291,36 @@ export async function cutVerticalClip(
     if (afChain.length > 0) args.push("-af", afChain.join(","));
   }
 
+  // Encoder: prefer Apple's hardware h264 encoder on Mac (offloads to media
+  // engine, frees CPU for the heavy filter chain). Falls back to libx264
+  // veryfast when FFMPEG_HW_ENCODE=false.
+  const useHw = process.env.FFMPEG_HW_ENCODE !== "false";
+  if (useHw) {
+    args.push(
+      "-c:v",
+      "h264_videotoolbox",
+      "-b:v",
+      "6M",
+      "-maxrate",
+      "8M",
+      "-bufsize",
+      "12M",
+      "-pix_fmt",
+      "yuv420p"
+    );
+  } else {
+    args.push(
+      "-c:v",
+      "libx264",
+      "-preset",
+      "veryfast",
+      "-crf",
+      "23",
+      "-pix_fmt",
+      "yuv420p"
+    );
+  }
   args.push(
-    "-c:v",
-    "libx264",
-    "-preset",
-    "fast",
-    "-crf",
-    "22",
-    "-pix_fmt",
-    "yuv420p",
     "-c:a",
     "aac",
     "-b:a",

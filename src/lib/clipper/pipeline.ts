@@ -156,45 +156,51 @@ export async function runPipeline(jobId: string): Promise<void> {
         },
       });
       try {
-        // Face detect on the midpoint frame for this clip's range
+        // Run independent prep tasks in parallel — face detect, mood
+        // classification, emphasis pick. Silence-gap calc is sync so
+        // it runs separately. ~10-15s saved per clip vs sequential.
+        const [face, moodPickResult, emphasisMomentsRaw] = await Promise.all([
+          detectFaceForClip(dl.videoPath, clip.startSec, clip.endSec, workDir).catch(
+            (err) => {
+              console.warn(`[clipper] face detect failed for ${clip.id}:`, err);
+              return null;
+            }
+          ),
+          musicEnabled
+            ? pickMood(clip.transcript ?? "", clip.hookTitle)
+                .then((mood) => pickMusicTrack(mood))
+                .catch(async (err) => {
+                  console.warn(`[clipper] mood detect failed for ${clip.id}:`, err);
+                  return pickMusicTrack();
+                })
+            : Promise.resolve(null),
+          punchZoomsEnabled
+            ? pickEmphasisMoments(
+                transcript.segments,
+                clip.startSec,
+                clip.endSec,
+                2
+              ).catch((err) => {
+                console.warn(`[clipper] emphasis pick failed for ${clip.id}:`, err);
+                return [];
+              })
+            : Promise.resolve([]),
+        ]);
+
         let cropX: number | undefined;
-        try {
-          const face = await detectFaceForClip(
-            dl.videoPath,
-            clip.startSec,
-            clip.endSec,
-            workDir
-          );
-          if (face) {
-            // 9:16 strip width in source pixels
-            const stripW = (face.imgH * 9) / 16;
-            cropX = cropXForFace(face, stripW);
-          }
-        } catch (faceErr) {
-          console.warn(`[clipper] face detect failed for ${clip.id}:`, faceErr);
+        if (face) {
+          const stripW = (face.imgH * 9) / 16;
+          cropX = cropXForFace(face, stripW);
         }
 
-        // Silence gaps from Whisper
+        const musicPick = moodPickResult;
+
+        // Silence gaps from Whisper (sync, just array filter)
         const gaps = findSilentGaps(
           transcript.segments,
           clip.startSec,
           clip.endSec
         );
-
-        // Mood-aware music: Gemma classifies the clip, then pickMusicTrack
-        // tries the matching mood folder, falling back to the flat root.
-        // Skip entirely if music toggle is off.
-        let musicPick: { path: string; attribution: string | null } | null = null;
-        if (musicEnabled) {
-          try {
-            const clipTranscript = clip.transcript ?? "";
-            const mood = await pickMood(clipTranscript, clip.hookTitle);
-            musicPick = await pickMusicTrack(mood);
-          } catch (moodErr) {
-            console.warn(`[clipper] mood detect failed for ${clip.id}:`, moodErr);
-            musicPick = await pickMusicTrack();
-          }
-        }
 
         const HOOK_DUR = 4;
         const OUTRO_LEAD = 0.6;
@@ -221,39 +227,31 @@ export async function runPipeline(jobId: string): Promise<void> {
             volumeDb: -12,
           });
 
-        // Punch zoom moments — Gemma picks 1-2 emphasis beats.
-        // Skip entirely if punch zooms toggled off.
-        let punchZooms: Array<{ atSec: number }> = [];
-        if (punchZoomsEnabled) {
-          try {
-            const moments = await pickEmphasisMoments(
-              transcript.segments,
-              clip.startSec,
-              clip.endSec,
-              2
-            );
-            punchZooms = moments
+        // Punch zooms — emphasisMomentsRaw was already fetched in the
+        // parallel block above. Convert input-time → output-time by
+        // subtracting any silence gaps that fall before the moment.
+        const punchZooms: Array<{ atSec: number }> = punchZoomsEnabled
+          ? emphasisMomentsRaw
               .map((m) => {
                 const removedBefore = gaps
                   .filter((g) => g.endSec < m.atSec)
                   .reduce((sum, g) => sum + (g.endSec - g.startSec), 0);
                 return { atSec: m.atSec - removedBefore };
               })
-              .filter((p) => p.atSec >= 0 && p.atSec + 0.6 < outputDur);
+              .filter((p) => p.atSec >= 0 && p.atSec + 0.6 < outputDur)
+          : [];
 
-            // Add an impact SFX synced to each punch (peak at +0.3s)
-            const impactPath = await pickImpactSfx();
-            if (impactPath) {
-              for (const p of punchZooms) {
-                sfxs.push({
-                  path: impactPath,
-                  startSec: Math.max(0, p.atSec + 0.2),
-                  volumeDb: -10,
-                });
-              }
+        if (punchZoomsEnabled && punchZooms.length > 0) {
+          // Impact SFX synced to each punch (peak at +0.3s)
+          const impactPath = await pickImpactSfx();
+          if (impactPath) {
+            for (const p of punchZooms) {
+              sfxs.push({
+                path: impactPath,
+                startSec: Math.max(0, p.atSec + 0.2),
+                volumeDb: -10,
+              });
             }
-          } catch (emphasisErr) {
-            console.warn(`[clipper] emphasis pick failed for ${clip.id}:`, emphasisErr);
           }
         }
 
@@ -283,7 +281,7 @@ export async function runPipeline(jobId: string): Promise<void> {
                 words,
                 outputDur,
                 capsDir,
-                12
+                8
               );
               captions = {
                 framePattern: rendered.framePattern,

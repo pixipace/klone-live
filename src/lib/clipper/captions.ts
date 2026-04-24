@@ -45,7 +45,7 @@ export async function renderCaptionFrames(
   words: CaptionWord[],
   durationSec: number,
   outDir: string,
-  fps: number = 12,
+  fps: number = 8,
   targetWidth: number = 1080,
   targetHeight: number = 1920
 ): Promise<RenderResult> {
