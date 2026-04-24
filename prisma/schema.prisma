@@ -30,6 +30,8 @@ model ClipJob {
   sourceDuration Int?
   status         String    @default("QUEUED")
   stage          String?
+  stageDetail    String?
+  progress       Int       @default(0)
   error          String?
   startedAt      DateTime?
   finishedAt     DateTime?

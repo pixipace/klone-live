@@ -21,7 +21,23 @@ export async function GET() {
     },
   });
 
-  return NextResponse.json({ jobs });
+  return NextResponse.json({
+    jobs: jobs.map((j) => ({
+      id: j.id,
+      sourceUrl: j.sourceUrl,
+      sourceTitle: j.sourceTitle,
+      sourceDuration: j.sourceDuration,
+      status: j.status,
+      stage: j.stage,
+      stageDetail: j.stageDetail,
+      progress: j.progress,
+      error: j.error,
+      startedAt: j.startedAt,
+      finishedAt: j.finishedAt,
+      createdAt: j.createdAt,
+      _count: j._count,
+    })),
+  });
 }
 
 export async function POST(request: NextRequest) {

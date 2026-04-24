@@ -22,6 +22,8 @@ type ClipJob = {
   sourceDuration: number | null;
   status: string;
   stage: string | null;
+  stageDetail: string | null;
+  progress: number;
   error: string | null;
   startedAt: string | null;
   finishedAt: string | null;
@@ -190,6 +192,21 @@ export default function ClipsPage() {
                         </span>
                       )}
                     </div>
+                    {isRunning && (
+                      <div className="mb-2 mt-1.5">
+                        <div className="h-1.5 bg-card rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-accent transition-all duration-500 ease-out"
+                            style={{ width: `${Math.max(2, job.progress)}%` }}
+                          />
+                        </div>
+                        {job.stageDetail && (
+                          <p className="text-[11px] text-muted-foreground mt-1">
+                            {job.stageDetail} · {job.progress}%
+                          </p>
+                        )}
+                      </div>
+                    )}
                     <p className="text-sm font-medium truncate">
                       {job.sourceTitle || job.sourceUrl}
                     </p>

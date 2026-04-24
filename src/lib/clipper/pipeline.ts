@@ -21,7 +21,13 @@ export async function runPipeline(jobId: string): Promise<void> {
 
   await prisma.clipJob.update({
     where: { id: jobId },
-    data: { status: "RUNNING", startedAt: new Date(), error: null },
+    data: {
+      status: "RUNNING",
+      startedAt: new Date(),
+      error: null,
+      progress: 0,
+      stageDetail: null,
+    },
   });
 
   const workDir = path.join(CLIPPER_DIRS.workRoot, jobId);
@@ -29,7 +35,11 @@ export async function runPipeline(jobId: string): Promise<void> {
   try {
     await prisma.clipJob.update({
       where: { id: jobId },
-      data: { stage: "DOWNLOADING" },
+      data: {
+        stage: "DOWNLOADING",
+        stageDetail: "Downloading source video",
+        progress: 5,
+      },
     });
     const dl = await downloadYouTube(job.sourceUrl, jobId);
 
@@ -37,6 +47,8 @@ export async function runPipeline(jobId: string): Promise<void> {
       where: { id: jobId },
       data: {
         stage: "TRANSCRIBING",
+        stageDetail: "Transcribing speech (this is the slow part)",
+        progress: 15,
         sourceTitle: dl.title,
         sourceDuration: Math.round(dl.durationSec),
       },
@@ -58,7 +70,11 @@ export async function runPipeline(jobId: string): Promise<void> {
 
     await prisma.clipJob.update({
       where: { id: jobId },
-      data: { stage: "PICKING" },
+      data: {
+        stage: "PICKING",
+        stageDetail: "AI picking viral moments",
+        progress: 45,
+      },
     });
     const picks = await pickClips(transcript.segments, dl.title);
 
@@ -92,7 +108,11 @@ export async function runPipeline(jobId: string): Promise<void> {
 
     await prisma.clipJob.update({
       where: { id: jobId },
-      data: { stage: "CUTTING" },
+      data: {
+        stage: "CUTTING",
+        stageDetail: `Cutting ${createdClips.length} clip${createdClips.length === 1 ? "" : "s"}`,
+        progress: 55,
+      },
     });
 
     const clipOutDir = path.join(CLIP_OUTPUT_ROOT, jobId);
@@ -102,6 +122,15 @@ export async function runPipeline(jobId: string): Promise<void> {
     for (let i = 0; i < createdClips.length; i++) {
       const clip = createdClips[i];
       const basename = `clip-${String(i + 1).padStart(2, "0")}-${clip.id.slice(0, 6)}`;
+      const cutBaseProgress = 55;
+      const cutPerClip = (95 - cutBaseProgress) / createdClips.length;
+      await prisma.clipJob.update({
+        where: { id: jobId },
+        data: {
+          stageDetail: `Cutting clip ${i + 1} of ${createdClips.length}`,
+          progress: Math.round(cutBaseProgress + cutPerClip * i),
+        },
+      });
       try {
         // Face detect on the midpoint frame for this clip's range
         let cropX: number | undefined;
@@ -285,6 +314,8 @@ export async function runPipeline(jobId: string): Promise<void> {
       data: {
         status: "DONE",
         stage: "DONE",
+        stageDetail: `${cutCount} clip${cutCount === 1 ? "" : "s"} ready`,
+        progress: 100,
         finishedAt: new Date(),
         error: cutFails > 0 ? `${cutFails} clip(s) failed to cut` : null,
       },
