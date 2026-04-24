@@ -226,7 +226,7 @@ export async function runPipeline(jobId: string): Promise<void> {
                 words,
                 outputDur,
                 capsDir,
-                8
+                12
               );
               captions = {
                 framePattern: rendered.framePattern,

@@ -122,7 +122,11 @@ async function transcribeInner(
     "-t",
     "8",
   ];
-  if (wordLevel) args.push("-ml", "1");
+  if (wordLevel) {
+    // -sow splits at word boundary; -dtw aligns per-token timestamps via
+    // DTW (much more accurate than -ml 1's segment-boundary guesses).
+    args.push("-sow", "-dtw", "large.v3.turbo");
+  }
 
   const { code, stderr } = await run(WHISPER_BIN, args);
 

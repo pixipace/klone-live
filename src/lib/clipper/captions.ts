@@ -17,6 +17,26 @@ export type RenderResult = {
   frames: number;
 };
 
+/** Drop consecutive duplicate words that Whisper sometimes hallucinates
+ *  (especially with -sow/-dtw on noisy audio). */
+function dedupeConsecutive(words: CaptionWord[]): CaptionWord[] {
+  const out: CaptionWord[] = [];
+  for (const w of words) {
+    const prev = out[out.length - 1];
+    if (
+      prev &&
+      prev.text.toLowerCase().replace(/[^\w]/g, "") ===
+        w.text.toLowerCase().replace(/[^\w]/g, "") &&
+      w.start - prev.end < 0.3
+    ) {
+      prev.end = w.end; // extend the previous occurrence
+      continue;
+    }
+    out.push({ ...w });
+  }
+  return out;
+}
+
 /**
  * Convert clip-relative Whisper word segments into the caption PNG sequence.
  * Returns the path glob ffmpeg can consume + the fps used.
@@ -25,13 +45,14 @@ export async function renderCaptionFrames(
   words: CaptionWord[],
   durationSec: number,
   outDir: string,
-  fps: number = 8,
+  fps: number = 12,
   targetWidth: number = 1080,
   targetHeight: number = 1920
 ): Promise<RenderResult> {
   const framesDir = path.join(outDir, "caps");
+  const cleanWords = dedupeConsecutive(words);
   const cfg = JSON.stringify({
-    words,
+    words: cleanWords,
     durationSec,
     outDir: framesDir,
     fps,
