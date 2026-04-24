@@ -57,6 +57,9 @@ export default function ClipsPage() {
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<ClipJob[]>([]);
   const [loading, setLoading] = useState(true);
+  const [optCaptions, setOptCaptions] = useState(true);
+  const [optMusic, setOptMusic] = useState(true);
+  const [optPunch, setOptPunch] = useState(true);
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -82,7 +85,12 @@ export default function ClipsPage() {
       const res = await fetch("/api/clips", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceUrl: url }),
+        body: JSON.stringify({
+          sourceUrl: url,
+          captions: optCaptions,
+          music: optMusic,
+          punchZooms: optPunch,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -144,9 +152,39 @@ export default function ClipsPage() {
         {error && (
           <p className="text-xs text-error mt-2">{error}</p>
         )}
+        <div className="flex flex-wrap gap-4 mt-3">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={optCaptions}
+              onChange={(e) => setOptCaptions(e.target.checked)}
+              className="accent-accent"
+            />
+            Word-by-word captions
+            <span className="text-[10px] text-muted">(+3-5min)</span>
+          </label>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={optMusic}
+              onChange={(e) => setOptMusic(e.target.checked)}
+              className="accent-accent"
+            />
+            Background music
+          </label>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={optPunch}
+              onChange={(e) => setOptPunch(e.target.checked)}
+              className="accent-accent"
+            />
+            Punch zooms + impact SFX
+          </label>
+        </div>
         <p className="text-[11px] text-muted-foreground mt-3">
-          Max 30 min source. Processing takes ~3-5 min depending on length. Up
-          to 2 jobs at once.
+          Max 30 min source. Processing takes ~5-10 min with all features on.
+          Up to 2 jobs at once.
         </p>
       </Card>
 

@@ -47,7 +47,17 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { sourceUrl } = body as { sourceUrl?: string };
+  const {
+    sourceUrl,
+    captions = true,
+    music = true,
+    punchZooms = true,
+  } = body as {
+    sourceUrl?: string;
+    captions?: boolean;
+    music?: boolean;
+    punchZooms?: boolean;
+  };
 
   if (!sourceUrl || typeof sourceUrl !== "string") {
     return NextResponse.json({ error: "Missing sourceUrl" }, { status: 400 });
@@ -99,6 +109,9 @@ export async function POST(request: NextRequest) {
       sourceUrl: sourceUrl.trim(),
       sourceDuration: Math.round(durationSec),
       status: "QUEUED",
+      optCaptions: !!captions,
+      optMusic: !!music,
+      optPunchZooms: !!punchZooms,
     },
   });
 

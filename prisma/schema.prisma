@@ -32,6 +32,9 @@ model ClipJob {
   stage          String?
   stageDetail    String?
   progress       Int       @default(0)
+  optCaptions    Boolean   @default(true)
+  optMusic       Boolean   @default(true)
+  optPunchZooms  Boolean   @default(true)
   error          String?
   startedAt      DateTime?
   finishedAt     DateTime?

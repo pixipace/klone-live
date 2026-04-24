@@ -59,13 +59,16 @@ export async function runPipeline(jobId: string): Promise<void> {
       throw new Error("Transcript empty — likely silent or unsupported audio");
     }
 
-    // Word-level transcription is now done PER CLIP (in the cut loop below)
-    // rather than on the full source — much faster and won't timeout on
-    // long sources. The whole-source word pass was killed at 15min on the
-    // 21-min Elon source.
-    const captionsEnabled = process.env.CAPTIONS_ENABLED !== "false";
-    if (!captionsEnabled) {
-      console.log(`[clipper] captions disabled via CAPTIONS_ENABLED=false`);
+    // Per-job toggles (set at submit time, falls back to env var, then default)
+    const captionsEnabled =
+      job.optCaptions !== false &&
+      process.env.CAPTIONS_ENABLED !== "false";
+    const musicEnabled = job.optMusic !== false;
+    const punchZoomsEnabled = job.optPunchZooms !== false;
+    if (!captionsEnabled || !musicEnabled || !punchZoomsEnabled) {
+      console.log(
+        `[clipper] toggles for ${jobId}: captions=${captionsEnabled} music=${musicEnabled} punchZooms=${punchZoomsEnabled}`
+      );
     }
 
     await prisma.clipJob.update({
@@ -159,14 +162,17 @@ export async function runPipeline(jobId: string): Promise<void> {
 
         // Mood-aware music: Gemma classifies the clip, then pickMusicTrack
         // tries the matching mood folder, falling back to the flat root.
+        // Skip entirely if music toggle is off.
         let musicPick: { path: string; attribution: string | null } | null = null;
-        try {
-          const clipTranscript = clip.transcript ?? "";
-          const mood = await pickMood(clipTranscript, clip.hookTitle);
-          musicPick = await pickMusicTrack(mood);
-        } catch (moodErr) {
-          console.warn(`[clipper] mood detect failed for ${clip.id}:`, moodErr);
-          musicPick = await pickMusicTrack();
+        if (musicEnabled) {
+          try {
+            const clipTranscript = clip.transcript ?? "";
+            const mood = await pickMood(clipTranscript, clip.hookTitle);
+            musicPick = await pickMusicTrack(mood);
+          } catch (moodErr) {
+            console.warn(`[clipper] mood detect failed for ${clip.id}:`, moodErr);
+            musicPick = await pickMusicTrack();
+          }
         }
 
         const HOOK_DUR = 4;
@@ -195,38 +201,39 @@ export async function runPipeline(jobId: string): Promise<void> {
           });
 
         // Punch zoom moments — Gemma picks 1-2 emphasis beats.
-        // Convert input-time atSec to output-time by subtracting any silence
-        // gaps that fall before the moment.
+        // Skip entirely if punch zooms toggled off.
         let punchZooms: Array<{ atSec: number }> = [];
-        try {
-          const moments = await pickEmphasisMoments(
-            transcript.segments,
-            clip.startSec,
-            clip.endSec,
-            2
-          );
-          punchZooms = moments
-            .map((m) => {
-              const removedBefore = gaps
-                .filter((g) => g.endSec < m.atSec)
-                .reduce((sum, g) => sum + (g.endSec - g.startSec), 0);
-              return { atSec: m.atSec - removedBefore };
-            })
-            .filter((p) => p.atSec >= 0 && p.atSec + 0.6 < outputDur);
+        if (punchZoomsEnabled) {
+          try {
+            const moments = await pickEmphasisMoments(
+              transcript.segments,
+              clip.startSec,
+              clip.endSec,
+              2
+            );
+            punchZooms = moments
+              .map((m) => {
+                const removedBefore = gaps
+                  .filter((g) => g.endSec < m.atSec)
+                  .reduce((sum, g) => sum + (g.endSec - g.startSec), 0);
+                return { atSec: m.atSec - removedBefore };
+              })
+              .filter((p) => p.atSec >= 0 && p.atSec + 0.6 < outputDur);
 
-          // Add an impact SFX synced to each punch (peak at +0.3s)
-          const impactPath = await pickImpactSfx();
-          if (impactPath) {
-            for (const p of punchZooms) {
-              sfxs.push({
-                path: impactPath,
-                startSec: Math.max(0, p.atSec + 0.2),
-                volumeDb: -10,
-              });
+            // Add an impact SFX synced to each punch (peak at +0.3s)
+            const impactPath = await pickImpactSfx();
+            if (impactPath) {
+              for (const p of punchZooms) {
+                sfxs.push({
+                  path: impactPath,
+                  startSec: Math.max(0, p.atSec + 0.2),
+                  volumeDb: -10,
+                });
+              }
             }
+          } catch (emphasisErr) {
+            console.warn(`[clipper] emphasis pick failed for ${clip.id}:`, emphasisErr);
           }
-        } catch (emphasisErr) {
-          console.warn(`[clipper] emphasis pick failed for ${clip.id}:`, emphasisErr);
         }
 
         // Word-by-word captions for this clip — transcribe just this clip's
