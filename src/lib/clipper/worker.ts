@@ -1,8 +1,12 @@
+import { rm } from "fs/promises";
+import path from "path";
 import { prisma } from "@/lib/prisma";
 import { runPipeline } from "./pipeline";
 
 const POLL_INTERVAL_MS = 10_000;
 const STUCK_JOB_THRESHOLD_MS = 30 * 60 * 1000; // 30 min
+const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // hourly
+const FAILED_RETENTION_DAYS = 14;
 
 let started = false;
 let timer: NodeJS.Timeout | null = null;
@@ -25,6 +29,31 @@ async function recoverOrphans() {
   if (orphans.count > 0) {
     console.log(`[clipper-worker] recovered ${orphans.count} orphan job(s) from restart`);
   }
+}
+
+async function cleanupOldJobs() {
+  // Delete FAILED jobs older than retention window + their on-disk files.
+  // DONE jobs stay forever (those are user-owned content); user can delete
+  // manually via the trash button in the UI.
+  const cutoff = new Date(Date.now() - FAILED_RETENTION_DAYS * 86400 * 1000);
+  const oldFailed = await prisma.clipJob.findMany({
+    where: { status: "FAILED", finishedAt: { lt: cutoff } },
+    select: { id: true },
+  });
+  if (oldFailed.length === 0) return;
+
+  for (const j of oldFailed) {
+    if (/^[a-z0-9]+$/i.test(j.id)) {
+      const dir = path.join(process.cwd(), ".uploads", "clips", j.id);
+      await rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+  await prisma.clipJob.deleteMany({
+    where: { id: { in: oldFailed.map((j) => j.id) } },
+  });
+  console.log(
+    `[clipper-worker] cleaned up ${oldFailed.length} FAILED job(s) older than ${FAILED_RETENTION_DAYS}d`
+  );
 }
 
 async function failStuckJobs() {
@@ -82,6 +111,16 @@ export function startClipperWorker() {
         tick().catch((err) => console.error("[clipper-worker] tick error:", err));
       }, POLL_INTERVAL_MS);
     });
+  // Hourly cleanup of old failed jobs
+  setInterval(() => {
+    cleanupOldJobs().catch((err) =>
+      console.error("[clipper-worker] cleanupOldJobs error:", err)
+    );
+  }, CLEANUP_INTERVAL_MS).unref();
+  // Run once at startup too
+  cleanupOldJobs().catch((err) =>
+    console.error("[clipper-worker] cleanupOldJobs error:", err)
+  );
 }
 
 export function stopClipperWorker() {
