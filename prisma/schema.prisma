@@ -22,25 +22,28 @@ model User {
 }
 
 model ClipJob {
-  id             String    @id @default(cuid())
-  userId         String
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sourceUrl      String
-  sourceTitle    String?
-  sourceDuration Int?
-  status         String    @default("QUEUED")
-  stage          String?
-  stageDetail    String?
-  progress       Int       @default(0)
-  optCaptions    Boolean   @default(true)
-  optMusic       Boolean   @default(true)
-  optPunchZooms  Boolean   @default(true)
-  error          String?
-  startedAt      DateTime?
-  finishedAt     DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  clips          Clip[]
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceUrl       String
+  sourceTitle     String?
+  sourceDuration  Int?
+  status          String    @default("QUEUED")
+  stage           String?
+  stageDetail     String?
+  progress        Int       @default(0)
+  optCaptions     Boolean   @default(true)
+  optMusic        Boolean   @default(true)
+  optPunchZooms   Boolean   @default(true)
+  /** Cached transcript JSON (segment-level) so re-pick can skip download
+    * + transcribe. Stored only after the first successful pipeline run. */
+  cachedTranscript String?
+  error           String?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  clips           Clip[]
 
   @@index([userId, createdAt])
   @@index([status])

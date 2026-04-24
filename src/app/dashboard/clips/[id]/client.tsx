@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ExternalLink, Flame, Clock, Send, Sparkles, Check, Pencil, Save, X } from "lucide-react";
+import { ArrowLeft, ExternalLink, Flame, Clock, Send, Sparkles, Check, Pencil, Save, X, RotateCcw } from "lucide-react";
 
 export type ClipDetail = {
   id: string;
@@ -196,6 +196,24 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
   const [titles, setTitles] = useState<Record<string, string>>(() =>
     Object.fromEntries(job.clips.map((c) => [c.id, c.hookTitle]))
   );
+  const [repicking, setRepicking] = useState(false);
+  const [repickErr, setRepickErr] = useState<string | null>(null);
+
+  const repick = async () => {
+    if (!confirm("Re-pick clips? Current clips will be deleted and Gemma will pick new moments.")) return;
+    setRepicking(true);
+    setRepickErr(null);
+    try {
+      const res = await fetch(`/api/clips/${job.id}/repick`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Re-pick failed");
+      router.push("/dashboard/clips");
+    } catch (err) {
+      setRepickErr(String(err instanceof Error ? err.message : err));
+    } finally {
+      setRepicking(false);
+    }
+  };
 
   const sendToCompose = (clip: ClipDetail) => {
     if (!clip.videoPath) return;
@@ -217,27 +235,41 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      <div>
-        <Link
-          href="/dashboard/clips"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-2"
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <Link
+            href="/dashboard/clips"
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-2"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Back to Clip Studio
+          </Link>
+          <h1 className="text-2xl font-semibold">
+            {job.sourceTitle || "Untitled"}
+          </h1>
+          <a
+            href={job.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-muted-foreground hover:text-accent inline-flex items-center gap-1 mt-1"
+          >
+            {job.sourceUrl}
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={repick}
+          disabled={repicking}
         >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          Back to Clip Studio
-        </Link>
-        <h1 className="text-2xl font-semibold">
-          {job.sourceTitle || "Untitled"}
-        </h1>
-        <a
-          href={job.sourceUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-muted-foreground hover:text-accent inline-flex items-center gap-1 mt-1"
-        >
-          {job.sourceUrl}
-          <ExternalLink className="w-3 h-3" />
-        </a>
+          <RotateCcw className="w-3.5 h-3.5 mr-1" />
+          {repicking ? "Re-picking…" : "Re-pick clips"}
+        </Button>
       </div>
+      {repickErr && (
+        <p className="text-xs text-error">{repickErr}</p>
+      )}
 
       {job.clips.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted-foreground">

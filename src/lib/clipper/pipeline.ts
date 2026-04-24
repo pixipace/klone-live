@@ -53,10 +53,31 @@ export async function runPipeline(jobId: string): Promise<void> {
         sourceDuration: Math.round(dl.durationSec),
       },
     });
-    const transcript = await transcribe(dl.audioPath);
+    // Use cached transcript if present (re-pick scenario) to skip the slow
+    // 4-min whisper segment pass. yt-dlp re-download is unavoidable since
+    // we delete source videos after each run to save disk.
+    let transcript: Awaited<ReturnType<typeof transcribe>>;
+    if (job.cachedTranscript) {
+      try {
+        transcript = JSON.parse(job.cachedTranscript);
+        console.log(`[clipper] using cached transcript for ${jobId}`);
+      } catch {
+        transcript = await transcribe(dl.audioPath);
+      }
+    } else {
+      transcript = await transcribe(dl.audioPath);
+    }
 
     if (transcript.segments.length === 0) {
       throw new Error("Transcript empty — likely silent or unsupported audio");
+    }
+
+    // Cache transcript for future re-picks
+    if (!job.cachedTranscript) {
+      await prisma.clipJob.update({
+        where: { id: jobId },
+        data: { cachedTranscript: JSON.stringify(transcript) },
+      });
     }
 
     // Per-job toggles (set at submit time, falls back to env var, then default)
