@@ -3,10 +3,10 @@ import path from "path";
 import { prisma } from "@/lib/prisma";
 import { CLIPPER_DIRS } from "./types";
 import { downloadYouTube } from "./youtube";
-import { transcribe, transcribeWords } from "./whisper";
+import { transcribe, transcribeClipWords } from "./whisper";
 import { pickClips } from "./picker";
 import { cutVerticalClip, type EditOptions } from "./cutter";
-import { renderCaptionFrames, wordsForClip } from "./captions";
+import { renderCaptionFrames } from "./captions";
 import { pickMusicTrack } from "./music";
 import { pickHookInSfx, pickHookOutSfx, pickOutroSfx, pickImpactSfx } from "./sfx";
 import { findSilentGaps, totalRemovedSec } from "./silence";
@@ -47,17 +47,12 @@ export async function runPipeline(jobId: string): Promise<void> {
       throw new Error("Transcript empty — likely silent or unsupported audio");
     }
 
-    // Word-level pass for captions — second whisper run with -ml 1.
-    // Best-effort: failure (timeout, OOM, etc.) just disables captions.
-    // Set CAPTIONS_ENABLED=false to skip this pass entirely (faster jobs).
-    let wordTranscript: typeof transcript | null = null;
-    if (process.env.CAPTIONS_ENABLED !== "false") {
-      try {
-        wordTranscript = await transcribeWords(dl.audioPath);
-      } catch (wErr) {
-        console.warn(`[clipper] word-level transcription failed:`, wErr);
-      }
-    } else {
+    // Word-level transcription is now done PER CLIP (in the cut loop below)
+    // rather than on the full source — much faster and won't timeout on
+    // long sources. The whole-source word pass was killed at 15min on the
+    // 21-min Elon source.
+    const captionsEnabled = process.env.CAPTIONS_ENABLED !== "false";
+    if (!captionsEnabled) {
       console.log(`[clipper] captions disabled via CAPTIONS_ENABLED=false`);
     }
 
@@ -205,15 +200,26 @@ export async function runPipeline(jobId: string): Promise<void> {
           console.warn(`[clipper] emphasis pick failed for ${clip.id}:`, emphasisErr);
         }
 
-        // Word-by-word captions for this clip
+        // Word-by-word captions for this clip — transcribe just this clip's
+        // audio slice with -ml 1 (much faster than full source pass).
         let captions: EditOptions["captions"];
-        if (wordTranscript) {
+        if (captionsEnabled) {
           try {
-            const words = wordsForClip(
-              wordTranscript.segments,
+            const clipWords = await transcribeClipWords(
+              dl.audioPath,
               clip.startSec,
-              clip.endSec
+              clip.endSec,
+              workDir,
+              `clip-${i + 1}`
             );
+            // Already clip-relative
+            const words = clipWords.segments
+              .map((s) => ({
+                start: s.start,
+                end: s.end,
+                text: s.text.replace(/^\s+|\s+$/g, ""),
+              }))
+              .filter((w) => w.text.length > 0 && w.end > w.start);
             if (words.length > 0) {
               const capsDir = path.join(workDir, `caps-${clip.id}`);
               const rendered = await renderCaptionFrames(

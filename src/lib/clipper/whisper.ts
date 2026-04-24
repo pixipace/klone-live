@@ -54,6 +54,54 @@ export async function transcribeWords(audioPath: string): Promise<WhisperResult>
   return transcribeInner(audioPath, true);
 }
 
+/**
+ * Extract a clip-range audio slice from sourceAudio and transcribe it at
+ * word-level. Returned segment timestamps are CLIP-RELATIVE (0 = clip start).
+ * Much faster than running -ml 1 on the whole source since the slice is
+ * 20-90s vs 20-30 min.
+ */
+export async function transcribeClipWords(
+  sourceAudio: string,
+  clipStart: number,
+  clipEnd: number,
+  workDir: string,
+  basename: string
+): Promise<WhisperResult> {
+  const sliceWavPath = `${workDir}/${basename}.slice.wav`;
+  const duration = clipEnd - clipStart;
+
+  // Cut just this clip's audio range
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn("ffmpeg", [
+      "-y",
+      "-ss",
+      clipStart.toFixed(2),
+      "-t",
+      duration.toFixed(2),
+      "-i",
+      sourceAudio,
+      "-ar",
+      "16000",
+      "-ac",
+      "1",
+      "-c:a",
+      "pcm_s16le",
+      sliceWavPath,
+    ]);
+    let stderr = "";
+    child.stderr.on("data", (d) => (stderr += d.toString()));
+    child.on("close", (code) =>
+      code === 0
+        ? resolve()
+        : reject(new Error(`ffmpeg slice ${code}: ${stderr.slice(-300)}`))
+    );
+    child.on("error", reject);
+  });
+
+  // Word-level transcribe the slice — already clip-relative
+  return transcribeInner(sliceWavPath, true);
+}
+
 async function transcribeInner(
   audioPath: string,
   wordLevel: boolean

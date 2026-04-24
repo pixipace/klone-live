@@ -27,12 +27,17 @@ def detect(image_path: str) -> dict:
     cascade = cv2.CascadeClassifier(cascade_path)
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    faces = cascade.detectMultiScale(
-        gray,
-        scaleFactor=1.15,
-        minNeighbors=5,
-        minSize=(60, 60),
-    )
+    # Try progressively looser params if strict pass finds nothing.
+    faces = []
+    for scale, neighbors in ((1.1, 3), (1.05, 2)):
+        faces = cascade.detectMultiScale(
+            gray,
+            scaleFactor=scale,
+            minNeighbors=neighbors,
+            minSize=(40, 40),
+        )
+        if len(faces) > 0:
+            break
 
     if len(faces) == 0:
         return {"detected": False, "imgW": w, "imgH": h}
