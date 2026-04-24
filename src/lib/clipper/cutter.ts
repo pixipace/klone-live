@@ -34,6 +34,10 @@ export type EditOptions = {
   /** SFX one-shots scheduled at specific output-timeline times. */
   sfxs?: SfxAtTime[];
   zoom?: boolean;
+  /** Apply cinematic color grade (subtle teal-orange split + lifted blacks). */
+  cinematic?: boolean;
+  /** Apply soft vignette darkening at corners. */
+  vignette?: boolean;
   /** Source-pixel x-offset for the 9:16 crop window (face-tracking). If
    * omitted, the strip is centered on the source frame. */
   cropX?: number;
@@ -91,7 +95,23 @@ export async function cutVerticalClip(
     );
   }
 
-  // Step 4 — silence-trim via select + setpts (re-time)
+  // Step 4 — cinematic color grade (subtle teal-orange split, lifted blacks).
+  // colorbalance: shift midtones slightly green-cyan, highlights warm; curves
+  // adds a tiny S-curve for contrast + lifts blacks toward dark teal.
+  if (options.cinematic) {
+    vfChain.push(
+      "colorbalance=rs=-0.05:gs=0.02:bs=0.06:rm=-0.04:gm=0.01:bm=0.02:rh=0.06:gh=0.01:bh=-0.04",
+      "curves=master='0/0.04 0.4/0.38 0.6/0.62 1/0.98'",
+      "eq=saturation=1.05:contrast=1.04"
+    );
+  }
+
+  // Step 5 — soft vignette
+  if (options.vignette) {
+    vfChain.push("vignette=PI/5");
+  }
+
+  // Step 6 — silence-trim via select + setpts (re-time)
   if (options.removeRanges && options.removeRanges.length > 0) {
     const expr = buildSelectExpr(options.removeRanges);
     vfChain.push(`select='${expr}'`, `setpts=N/FRAME_RATE/TB`);

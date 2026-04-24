@@ -161,6 +161,8 @@ export async function runPipeline(jobId: string): Promise<void> {
           musicVolumeDb: -25,
           sfxs,
           zoom: true,
+          cinematic: true,
+          vignette: true,
           cropX,
           removeRanges: gaps,
         };
