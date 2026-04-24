@@ -119,19 +119,19 @@ export async function runPipeline(jobId: string): Promise<void> {
 
         // Mood-aware music: Gemma classifies the clip, then pickMusicTrack
         // tries the matching mood folder, falling back to the flat root.
-        let musicPath: string | null = null;
+        let musicPick: { path: string; attribution: string | null } | null = null;
         try {
           const clipTranscript = clip.transcript ?? "";
           const mood = await pickMood(clipTranscript, clip.hookTitle);
-          musicPath = await pickMusicTrack(mood);
+          musicPick = await pickMusicTrack(mood);
         } catch (moodErr) {
           console.warn(`[clipper] mood detect failed for ${clip.id}:`, moodErr);
-          musicPath = await pickMusicTrack();
+          musicPick = await pickMusicTrack();
         }
 
         const editOpts: EditOptions = {
           hookOverlay: { text: clip.hookTitle, durationSec: 4 },
-          musicPath: musicPath ?? undefined,
+          musicPath: musicPick?.path,
           musicVolumeDb: -25,
           zoom: true,
           cropX,
@@ -151,6 +151,7 @@ export async function runPipeline(jobId: string): Promise<void> {
           data: {
             videoPath: `/api/uploads/clips/${jobId}/${path.basename(out.videoPath)}`,
             thumbnailPath: `/api/uploads/clips/${jobId}/${path.basename(out.thumbnailPath)}`,
+            musicAttribution: musicPick?.attribution ?? null,
           },
         });
         cutCount += 1;

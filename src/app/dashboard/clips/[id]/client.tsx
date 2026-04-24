@@ -20,6 +20,7 @@ export type ClipDetail = {
   transcript: string | null;
   videoPath: string | null;
   thumbnailPath: string | null;
+  musicAttribution: string | null;
 };
 
 export type JobDetail = {
@@ -115,8 +116,12 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
 
   const sendToCompose = (clip: ClipDetail) => {
     if (!clip.videoPath) return;
+    const baseCaption = titles[clip.id] ?? clip.hookTitle;
+    const caption = clip.musicAttribution
+      ? `${baseCaption}\n\n${clip.musicAttribution}`
+      : baseCaption;
     const payload = {
-      caption: titles[clip.id] ?? clip.hookTitle,
+      caption,
       mediaUrl: clip.videoPath,
       mediaType: "video" as const,
       mediaName: `Clip from ${job.sourceTitle || "source"}`,
@@ -214,6 +219,11 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
               {clip.reason && (
                 <p className="text-xs text-muted-foreground italic">
                   {clip.reason}
+                </p>
+              )}
+              {clip.musicAttribution && (
+                <p className="text-[11px] text-accent">
+                  {clip.musicAttribution} — auto-added to caption on Send
                 </p>
               )}
               {clip.transcript && (

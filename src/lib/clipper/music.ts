@@ -1,4 +1,4 @@
-import { readdir, stat } from "fs/promises";
+import { readdir, readFile, stat } from "fs/promises";
 import path from "path";
 
 const MUSIC_ROOT = path.join(process.cwd(), "assets", "music");
@@ -13,6 +13,46 @@ export type Mood =
   | "comedic"
   | "urgent"
   | "neutral";
+
+export type TrackPick = {
+  path: string;
+  /** Pre-formatted attribution string to append to the caption (e.g.
+   * "♪ Music: Track by Artist (CC-BY)"). Null = no attribution required. */
+  attribution: string | null;
+};
+
+type Sidecar = {
+  title?: string;
+  artist?: string;
+  license?: string;
+  attributionRequired?: boolean;
+  attributionText?: string;
+  sourceUrl?: string;
+};
+
+async function readSidecar(trackPath: string): Promise<Sidecar | null> {
+  const sidecarPath = `${trackPath}.json`;
+  try {
+    const raw = await readFile(sidecarPath, "utf8");
+    return JSON.parse(raw) as Sidecar;
+  } catch {
+    return null;
+  }
+}
+
+function formatAttribution(sidecar: Sidecar | null): string | null {
+  if (!sidecar) return null;
+  if (sidecar.attributionRequired === false) return null;
+  if (sidecar.attributionText) return sidecar.attributionText;
+  // Build a default attribution if metadata exists but no explicit text
+  if (sidecar.attributionRequired && (sidecar.title || sidecar.artist)) {
+    const title = sidecar.title || "untitled";
+    const artist = sidecar.artist || "unknown";
+    const license = sidecar.license ? ` (${sidecar.license})` : "";
+    return `♪ Music: ${title} by ${artist}${license}`;
+  }
+  return null;
+}
 
 async function pickFromDir(dir: string): Promise<string | null> {
   try {
@@ -36,12 +76,17 @@ async function pickFromDir(dir: string): Promise<string | null> {
  * Pick a music track. If a mood is given, look in /assets/music/{mood}/ first;
  * fall back to flat /assets/music/ if mood folder is empty/missing. Returns
  * null if no music files exist anywhere.
+ *
+ * Includes any attribution string from the track's sidecar JSON file.
  */
-export async function pickMusicTrack(mood?: Mood): Promise<string | null> {
+export async function pickMusicTrack(mood?: Mood): Promise<TrackPick | null> {
+  let trackPath: string | null = null;
   if (mood) {
-    const fromMood = await pickFromDir(path.join(MUSIC_ROOT, mood));
-    if (fromMood) return fromMood;
+    trackPath = await pickFromDir(path.join(MUSIC_ROOT, mood));
   }
-  // Fallback: flat root directory
-  return pickFromDir(MUSIC_ROOT);
+  if (!trackPath) trackPath = await pickFromDir(MUSIC_ROOT);
+  if (!trackPath) return null;
+
+  const sidecar = await readSidecar(trackPath);
+  return { path: trackPath, attribution: formatAttribution(sidecar) };
 }
