@@ -10,13 +10,38 @@ const WHISPER_MODEL =
 
 const WHISPER_BIN = process.env.WHISPER_BIN || "whisper-cli";
 
+const WHISPER_TIMEOUT_MS = parseInt(
+  process.env.WHISPER_TIMEOUT_MS ?? `${15 * 60 * 1000}`,
+  10
+);
+
 function run(cmd: string, args: string[]): Promise<{ code: number; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args);
     let stderr = "";
+    let timedOut = false;
+
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, WHISPER_TIMEOUT_MS);
+
     child.stderr.on("data", (d) => (stderr += d.toString()));
-    child.on("close", (code) => resolve({ code: code ?? 1, stderr }));
-    child.on("error", reject);
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      if (timedOut) {
+        return reject(
+          new Error(
+            `${cmd} killed after ${WHISPER_TIMEOUT_MS / 1000}s — likely memory pressure or hang`
+          )
+        );
+      }
+      resolve({ code: code ?? 1, stderr });
+    });
+    child.on("error", (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
   });
 }
 

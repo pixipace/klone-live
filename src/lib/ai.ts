@@ -23,6 +23,12 @@ async function generate(
     userMessage.images = opts.images;
   }
 
+  // keep_alive controls how long Ollama keeps the model in VRAM after the
+  // call. Default is 5 min — way too long when whisper-cli needs RAM in the
+  // same job. Use a short hold so consecutive calls within a clip can reuse
+  // the loaded model, but it unloads before whisper passes start.
+  const keepAlive = process.env.OLLAMA_KEEP_ALIVE ?? "30s";
+
   const res = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -35,6 +41,7 @@ async function generate(
       stream: false,
       think: false,
       format: opts.format,
+      keep_alive: keepAlive,
       options: {
         temperature: opts.temperature ?? 0.85,
         num_predict: opts.maxTokens ?? 512,

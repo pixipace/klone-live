@@ -48,12 +48,17 @@ export async function runPipeline(jobId: string): Promise<void> {
     }
 
     // Word-level pass for captions — second whisper run with -ml 1.
-    // Best-effort: failure here just disables captions, doesn't fail the job.
+    // Best-effort: failure (timeout, OOM, etc.) just disables captions.
+    // Set CAPTIONS_ENABLED=false to skip this pass entirely (faster jobs).
     let wordTranscript: typeof transcript | null = null;
-    try {
-      wordTranscript = await transcribeWords(dl.audioPath);
-    } catch (wErr) {
-      console.warn(`[clipper] word-level transcription failed:`, wErr);
+    if (process.env.CAPTIONS_ENABLED !== "false") {
+      try {
+        wordTranscript = await transcribeWords(dl.audioPath);
+      } catch (wErr) {
+        console.warn(`[clipper] word-level transcription failed:`, wErr);
+      }
+    } else {
+      console.log(`[clipper] captions disabled via CAPTIONS_ENABLED=false`);
     }
 
     await prisma.clipJob.update({
