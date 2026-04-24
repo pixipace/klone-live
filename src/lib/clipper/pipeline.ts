@@ -5,7 +5,10 @@ import { CLIPPER_DIRS } from "./types";
 import { downloadYouTube } from "./youtube";
 import { transcribe } from "./whisper";
 import { pickClips } from "./picker";
-import { cutVerticalClip } from "./cutter";
+import { cutVerticalClip, type EditOptions } from "./cutter";
+import { pickMusicTrack } from "./music";
+import { findSilentGaps } from "./silence";
+import { detectFaceForClip, cropXForFace } from "./face";
 
 const CLIP_OUTPUT_ROOT = path.join(process.cwd(), ".uploads", "clips");
 
@@ -81,6 +84,7 @@ export async function runPipeline(jobId: string): Promise<void> {
     });
 
     const clipOutDir = path.join(CLIP_OUTPUT_ROOT, jobId);
+    const musicPath = await pickMusicTrack();
     let cutCount = 0;
     let cutFails = 0;
 
@@ -88,12 +92,47 @@ export async function runPipeline(jobId: string): Promise<void> {
       const clip = createdClips[i];
       const basename = `clip-${String(i + 1).padStart(2, "0")}-${clip.id.slice(0, 6)}`;
       try {
+        // Face detect on the midpoint frame for this clip's range
+        let cropX: number | undefined;
+        try {
+          const face = await detectFaceForClip(
+            dl.videoPath,
+            clip.startSec,
+            clip.endSec,
+            workDir
+          );
+          if (face) {
+            // 9:16 strip width in source pixels
+            const stripW = (face.imgH * 9) / 16;
+            cropX = cropXForFace(face, stripW);
+          }
+        } catch (faceErr) {
+          console.warn(`[clipper] face detect failed for ${clip.id}:`, faceErr);
+        }
+
+        // Silence gaps from Whisper
+        const gaps = findSilentGaps(
+          transcript.segments,
+          clip.startSec,
+          clip.endSec
+        );
+
+        const editOpts: EditOptions = {
+          hookOverlay: { text: clip.hookTitle, durationSec: 4 },
+          musicPath: musicPath ?? undefined,
+          musicVolumeDb: -25,
+          zoom: true,
+          cropX,
+          removeRanges: gaps,
+        };
+
         const out = await cutVerticalClip(
           dl.videoPath,
           clip.startSec,
           clip.endSec,
           clipOutDir,
-          basename
+          basename,
+          editOpts
         );
         await prisma.clip.update({
           where: { id: clip.id },
