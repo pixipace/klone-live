@@ -243,11 +243,26 @@ export async function cutVerticalClip(
     const audioInChain = afChain.length > 0 ? afChain.join(",") : "anull";
     parts.push(`[0:a]${audioInChain}[a0]`);
 
-    const audioMixInputs: string[] = ["[a0]"];
+    // Split speaker audio so we can use one branch as the sidechain key
+    // (for ducking music) AND another as the actual mix input.
+    const needsSplit = musicInputIdx !== null;
+    if (needsSplit) {
+      parts.push(`[a0]asplit=2[aMixIn][aDuckKey]`);
+    } else {
+      parts.push(`[a0]anull[aMixIn]`);
+    }
+
+    const audioMixInputs: string[] = ["[aMixIn]"];
 
     if (musicInputIdx !== null) {
-      const volDb = options.musicVolumeDb ?? -25;
-      parts.push(`[${musicInputIdx}:a]volume=${volDb}dB,apad[aMusic]`);
+      const volDb = options.musicVolumeDb ?? -22;
+      // Sidechain compression: when speaker (key) gets loud, music ducks.
+      // threshold=0.05, ratio=8, attack=20ms, release=300ms — quick duck,
+      // smooth lift back when speaker pauses.
+      parts.push(`[${musicInputIdx}:a]volume=${volDb}dB,apad[aMusicRaw]`);
+      parts.push(
+        `[aMusicRaw][aDuckKey]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=300:makeup=0[aMusic]`
+      );
       audioMixInputs.push("[aMusic]");
     }
 
