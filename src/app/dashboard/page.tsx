@@ -1,130 +1,363 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   PenSquare,
   ArrowRight,
-  Zap,
   Calendar,
-  Users,
   Send,
+  Scissors,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
 } from "lucide-react";
+import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+
+export const dynamic = "force-dynamic";
 
 const platforms = [
-  { name: "TikTok", color: "#00f2ea", letter: "T" },
-  { name: "Instagram", color: "#e4405f", letter: "I" },
-  { name: "Facebook", color: "#1877f2", letter: "f" },
-  { name: "YouTube", color: "#ff0000", letter: "Y" },
-  { name: "LinkedIn", color: "#0077b5", letter: "in" },
+  { id: "tiktok", name: "TikTok", color: "#00f2ea", letter: "T" },
+  { id: "instagram", name: "Instagram", color: "#e4405f", letter: "I" },
+  { id: "facebook", name: "Facebook", color: "#1877f2", letter: "f" },
+  { id: "youtube", name: "YouTube", color: "#ff0000", letter: "Y" },
+  { id: "linkedin", name: "LinkedIn", color: "#0077b5", letter: "in" },
 ];
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const session = await getSession();
+  if (!session) redirect("/login");
+
+  const weekAgo = new Date(Date.now() - 7 * 86400 * 1000);
+
+  const [
+    scheduledCount,
+    postedThisWeek,
+    failedThisWeek,
+    clipsTotal,
+    socialAccounts,
+    recentPosts,
+    recentClipJobs,
+  ] = await Promise.all([
+    prisma.post.count({
+      where: { userId: session.id, status: "SCHEDULED" },
+    }),
+    prisma.post.count({
+      where: {
+        userId: session.id,
+        status: { in: ["POSTED", "PARTIAL"] },
+        postedAt: { gte: weekAgo },
+      },
+    }),
+    prisma.post.count({
+      where: {
+        userId: session.id,
+        status: "FAILED",
+        createdAt: { gte: weekAgo },
+      },
+    }),
+    prisma.clip.count({
+      where: { job: { userId: session.id } },
+    }),
+    prisma.socialAccount.findMany({
+      where: { userId: session.id },
+      select: { platform: true, expiresAt: true, username: true },
+    }),
+    prisma.post.findMany({
+      where: { userId: session.id },
+      orderBy: { createdAt: "desc" },
+      take: 3,
+      select: {
+        id: true,
+        caption: true,
+        status: true,
+        platforms: true,
+        createdAt: true,
+      },
+    }),
+    prisma.clipJob.findMany({
+      where: { userId: session.id },
+      orderBy: { createdAt: "desc" },
+      take: 3,
+      select: {
+        id: true,
+        sourceTitle: true,
+        status: true,
+        progress: true,
+        stageDetail: true,
+        _count: { select: { clips: true } },
+      },
+    }),
+  ]);
+
+  const connectedPlatformIds = new Set(socialAccounts.map((a) => a.platform));
+  const successRate =
+    postedThisWeek + failedThisWeek > 0
+      ? Math.round((postedThisWeek / (postedThisWeek + failedThisWeek)) * 100)
+      : null;
+
+  const greet = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return "Good morning";
+    if (h < 18) return "Good afternoon";
+    return "Good evening";
+  })();
+
   return (
     <div className="space-y-8 animate-fade-up">
-      {/* Welcome */}
       <div>
         <h2 className="text-2xl font-semibold tracking-tight">
-          Welcome to Klone
+          {greet}, {session.name?.split(" ")[0] || "there"}
         </h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Publish content across all your social platforms from one place.
+          Here&apos;s what&apos;s happening with your content this week.
         </p>
       </div>
 
-      {/* Quick stats */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: "Scheduled", value: "0", icon: Calendar },
-          { label: "Published", value: "0", icon: Send },
-          { label: "Connected", value: "0", icon: Users },
-        ].map((stat, i) => (
-          <div
-            key={stat.label}
-            className={`relative group rounded-xl bg-card border border-border/60 p-5 animate-fade-up delay-${i + 1} card-glow`}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                  {stat.label}
-                </p>
-                <p className="text-3xl font-light mt-2 tracking-tight">
-                  {stat.value}
-                </p>
-              </div>
-              <stat.icon className="w-5 h-5 text-muted/40" />
-            </div>
-          </div>
-        ))}
+      {/* Stat grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatCard
+          label="Posted this week"
+          value={String(postedThisWeek)}
+          icon={Send}
+          accent={postedThisWeek > 0}
+        />
+        <StatCard
+          label="Scheduled"
+          value={String(scheduledCount)}
+          icon={Calendar}
+          accent={scheduledCount > 0}
+        />
+        <StatCard
+          label="Clips generated"
+          value={String(clipsTotal)}
+          icon={Scissors}
+          accent={clipsTotal > 0}
+        />
+        <StatCard
+          label="Success rate (7d)"
+          value={successRate === null ? "—" : `${successRate}%`}
+          icon={CheckCircle2}
+          accent={successRate === null ? false : successRate >= 90}
+          warning={successRate !== null && successRate < 70}
+        />
       </div>
 
-      {/* Connected platforms strip */}
-      <div className="animate-fade-up delay-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Zap className="w-3.5 h-3.5 text-accent" />
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Platforms
-          </span>
-        </div>
-        <div className="flex gap-2">
-          {platforms.map((p) => (
-            <Link
-              key={p.name}
-              href="/dashboard/accounts"
-              className="group flex items-center gap-2 px-3 py-2 rounded-lg bg-card border border-border/60 hover:border-border-hover transition-all"
-            >
-              <div
-                className="w-6 h-6 rounded-md flex items-center justify-center text-white text-[10px] font-bold"
-                style={{ backgroundColor: p.color }}
+      {/* Connected platforms */}
+      <div>
+        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+          Connected accounts
+        </h3>
+        <div className="flex gap-2 flex-wrap">
+          {platforms.map((p) => {
+            const account = socialAccounts.find((a) => a.platform === p.id);
+            const isConnected = !!account;
+            const expiresAt = account?.expiresAt;
+            const daysLeft = expiresAt
+              ? Math.floor(
+                  (new Date(expiresAt).getTime() - Date.now()) / 86400000
+                )
+              : null;
+            const expiringSoon =
+              daysLeft !== null && daysLeft >= 0 && daysLeft < 7;
+            return (
+              <Link
+                key={p.id}
+                href="/dashboard/accounts"
+                className={`group flex items-center gap-2 px-3 py-2 rounded-lg border transition-all ${
+                  isConnected
+                    ? expiringSoon
+                      ? "bg-warning/5 border-warning/30"
+                      : "bg-card border-border/60 hover:border-border-hover"
+                    : "bg-card/40 border-dashed border-border/40 opacity-60 hover:opacity-100"
+                }`}
               >
-                {p.letter}
-              </div>
-              <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
-                {p.name}
-              </span>
-            </Link>
-          ))}
+                <div
+                  className="w-6 h-6 rounded-md flex items-center justify-center text-white text-[10px] font-bold"
+                  style={{ backgroundColor: p.color }}
+                >
+                  {p.letter}
+                </div>
+                <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
+                  {p.name}
+                </span>
+                {isConnected && expiringSoon && (
+                  <AlertCircle className="w-3 h-3 text-warning" />
+                )}
+                {!isConnected && (
+                  <span className="text-[10px] text-muted">connect</span>
+                )}
+              </Link>
+            );
+          })}
         </div>
+        {connectedPlatformIds.size === 0 && (
+          <p className="text-xs text-muted-foreground mt-2">
+            Connect at least one account to start posting →{" "}
+            <Link href="/dashboard/accounts" className="text-accent hover:underline">
+              Accounts
+            </Link>
+          </p>
+        )}
+      </div>
+
+      {/* Recent activity */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <ActivityCard
+          title="Recent posts"
+          href="/dashboard/posts"
+          empty="No posts yet — create one"
+          items={recentPosts.map((p) => ({
+            key: p.id,
+            label: p.caption.slice(0, 60) || "(no caption)",
+            sub: `${p.platforms || "no platforms"} · ${p.status.toLowerCase()}`,
+          }))}
+        />
+        <ActivityCard
+          title="Recent clip jobs"
+          href="/dashboard/clips"
+          empty="No clip jobs yet — paste a YouTube URL"
+          items={recentClipJobs.map((j) => ({
+            key: j.id,
+            label: j.sourceTitle || "(processing…)",
+            sub:
+              j.status === "RUNNING"
+                ? `${j.stageDetail || "running"} · ${j.progress}%`
+                : `${j.status.toLowerCase()} · ${j._count.clips} clip${j._count.clips === 1 ? "" : "s"}`,
+          }))}
+        />
       </div>
 
       {/* Quick actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-up delay-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Link
-          href="/dashboard/create"
+          href="/dashboard/clips"
           className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-accent/10 via-card to-card border border-accent/20 p-6 hover:border-accent/40 transition-all"
         >
           <div className="absolute top-0 right-0 w-32 h-32 bg-accent/5 rounded-full blur-2xl -translate-y-8 translate-x-8" />
           <div className="relative">
             <div className="w-10 h-10 rounded-xl bg-accent/15 flex items-center justify-center mb-4">
-              <PenSquare className="w-5 h-5 text-accent" />
+              <Scissors className="w-5 h-5 text-accent" />
             </div>
-            <h3 className="text-base font-medium">Create a post</h3>
+            <h3 className="text-base font-medium">Generate clips</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Upload media and publish to all your platforms at once.
+              Paste a YouTube URL → get cinematic 9:16 clips ready to post.
             </p>
             <div className="flex items-center gap-1 mt-4 text-xs text-accent font-medium">
-              Start creating
+              Open Clip Studio
               <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
             </div>
           </div>
         </Link>
 
         <Link
-          href="/dashboard/accounts"
+          href="/dashboard/create"
           className="group relative overflow-hidden rounded-xl bg-card border border-border/60 p-6 hover:border-border-hover transition-all card-glow"
         >
           <div className="relative">
             <div className="w-10 h-10 rounded-xl bg-card-hover flex items-center justify-center mb-4">
-              <Users className="w-5 h-5 text-muted-foreground" />
+              <PenSquare className="w-5 h-5 text-muted-foreground" />
             </div>
-            <h3 className="text-base font-medium">Connect accounts</h3>
+            <h3 className="text-base font-medium">Create a post</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Link your TikTok, Instagram, YouTube, LinkedIn, or Facebook.
+              Upload media or write a caption and post to all your platforms.
             </p>
             <div className="flex items-center gap-1 mt-4 text-xs text-muted-foreground font-medium group-hover:text-foreground transition-colors">
-              Manage accounts
+              Start posting
               <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
             </div>
           </div>
         </Link>
       </div>
     </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  accent,
+  warning,
+}: {
+  label: string;
+  value: string;
+  icon: React.ElementType;
+  accent?: boolean;
+  warning?: boolean;
+}) {
+  return (
+    <div className="relative group rounded-xl bg-card border border-border/60 p-5 card-glow">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+            {label}
+          </p>
+          <p
+            className={`text-3xl font-light mt-2 tracking-tight ${
+              warning
+                ? "text-warning"
+                : accent
+                  ? "text-foreground"
+                  : "text-muted-foreground"
+            }`}
+          >
+            {value}
+          </p>
+        </div>
+        <Icon
+          className={`w-5 h-5 ${
+            warning
+              ? "text-warning"
+              : accent
+                ? "text-accent"
+                : "text-muted/40"
+          }`}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ActivityCard({
+  title,
+  href,
+  empty,
+  items,
+}: {
+  title: string;
+  href: string;
+  empty: string;
+  items: Array<{ key: string; label: string; sub: string }>;
+}) {
+  return (
+    <Link
+      href={href}
+      className="block rounded-xl bg-card border border-border/60 p-5 hover:border-border-hover transition-colors"
+    >
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="text-sm font-medium">{title}</h4>
+        <ArrowRight className="w-3 h-3 text-muted-foreground" />
+      </div>
+      {items.length === 0 ? (
+        <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+          <Clock className="w-3 h-3" />
+          {empty}
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {items.map((item) => (
+            <div
+              key={item.key}
+              className="flex flex-col gap-0.5 text-xs"
+            >
+              <span className="text-foreground truncate">{item.label}</span>
+              <span className="text-muted-foreground text-[11px] truncate">
+                {item.sub}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Link>
   );
 }
