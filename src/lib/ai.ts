@@ -380,6 +380,65 @@ Write the caption now.`;
   });
 }
 
+export type Mood =
+  | "energetic"
+  | "chill"
+  | "dramatic"
+  | "hopeful"
+  | "motivational"
+  | "comedic"
+  | "urgent"
+  | "neutral";
+
+const MOODS: Mood[] = [
+  "energetic",
+  "chill",
+  "dramatic",
+  "hopeful",
+  "motivational",
+  "comedic",
+  "urgent",
+  "neutral",
+];
+
+export async function pickMood(
+  transcript: string,
+  hookTitle?: string
+): Promise<Mood> {
+  const system = `You classify a short video clip's mood for background music selection. Output JSON only: {"mood":"<one of: energetic, chill, dramatic, hopeful, motivational, comedic, urgent, neutral>"}.
+
+Mood guide:
+- energetic: high-energy stories, fast pacing, exciting reveals
+- chill: relaxed conversation, philosophical musings, slower delivery
+- dramatic: heavy topics, intense moments, big stakes
+- hopeful: positive transformation, success stories, uplifting messages
+- motivational: tactical advice, "you can do this", call-to-action
+- comedic: jokes, light banter, absurd takes
+- urgent: warnings, "don't make this mistake", time-sensitive
+- neutral: informational, doesn't fit other categories — use sparingly
+
+Output ONLY the JSON. No preamble.`;
+
+  const prompt = `${hookTitle ? `Hook: "${hookTitle}"\n\n` : ""}Transcript: """${transcript.slice(0, 1500)}"""
+
+Output the JSON.`;
+
+  try {
+    const raw = await generate(prompt, system, {
+      temperature: 0.2,
+      maxTokens: 60,
+      format: "json",
+    });
+    const parsed = JSON.parse(raw) as { mood?: string };
+    if (parsed.mood && (MOODS as string[]).includes(parsed.mood)) {
+      return parsed.mood as Mood;
+    }
+  } catch {
+    // fall through
+  }
+  return "neutral";
+}
+
 export async function isOllamaUp(): Promise<boolean> {
   try {
     const res = await fetch(`${OLLAMA_URL}/api/tags`);

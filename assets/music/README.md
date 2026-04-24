@@ -1,22 +1,46 @@
 # Background music for clips
 
-Drop royalty-free MP3/M4A files into this directory and the clipper
-will randomly pick one for each clip's background music (mixed at
--25dB so dialogue stays clear).
+The clipper auto-picks a track per clip based on the clip's mood.
+Gemma classifies each clip's mood from its transcript + hook, then
+the picker grabs a random file from the matching mood folder.
 
-## Where to get free tracks
+## Folder structure
 
-- **Pixabay** (no attribution required, commercial OK): https://pixabay.com/music/
-- **YouTube Audio Library**: https://www.youtube.com/audiolibrary
+```
+assets/music/
+├── energetic/       fast tempo, drums, builds — exciting reveals, story climaxes
+├── chill/           lo-fi, ambient — relaxed talks, philosophical
+├── dramatic/        cinematic, suspense — heavy topics, big stakes
+├── hopeful/         uplifting piano, strings — transformation stories
+├── motivational/    corporate uplifting, claps — tactical advice, CTAs
+├── comedic/         quirky, playful — jokes, light banter
+├── urgent/          tight rhythm, intense — warnings, "don't do this"
+├── neutral/         safe default — informational
+└── *.mp3            tracks placed at the root are fallbacks if a mood
+                    folder is empty
+```
+
+The picker tries the mood folder first. If it's empty (or doesn't
+exist), it falls back to the flat root. So you can start with 5
+tracks at the root and migrate to mood folders later — both work.
+
+If everything is empty, clips ship without music (no error).
+
+## Where to get tracks
+
+- **Pixabay** (no attribution, commercial OK): https://pixabay.com/music/
+  Search "lo-fi", "corporate", "cinematic", "comedy" etc.
+- **YouTube Audio Library** (free): https://www.youtube.com/audiolibrary
+  Filter by mood/genre.
 - **Uppbeat free tier**: https://uppbeat.io/
 
-## What works well for short-form
+## Recommended starting library
 
-- 30-90 sec instrumental loops
-- "Lo-fi", "chill beat", "corporate uplifting", "cinematic"
-- Avoid lyrics — they fight with the speaker
+5 tracks per mood = 40 total = solid variety. Try to keep tracks:
+- 30-90 seconds (or instrumental loops)
+- No vocals (they fight with the speaker)
+- Consistent loudness within a mood (saves you remixing)
 
-## To disable music globally
+## Disable music globally
 
-Empty this directory (or just don't drop files in). The pipeline
-detects an empty/missing music dir and skips music application.
+Empty all directories. The pipeline detects no tracks → skips music.

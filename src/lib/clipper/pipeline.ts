@@ -9,6 +9,7 @@ import { cutVerticalClip, type EditOptions } from "./cutter";
 import { pickMusicTrack } from "./music";
 import { findSilentGaps } from "./silence";
 import { detectFaceForClip, cropXForFace } from "./face";
+import { pickMood } from "@/lib/ai";
 
 const CLIP_OUTPUT_ROOT = path.join(process.cwd(), ".uploads", "clips");
 
@@ -84,7 +85,6 @@ export async function runPipeline(jobId: string): Promise<void> {
     });
 
     const clipOutDir = path.join(CLIP_OUTPUT_ROOT, jobId);
-    const musicPath = await pickMusicTrack();
     let cutCount = 0;
     let cutFails = 0;
 
@@ -116,6 +116,18 @@ export async function runPipeline(jobId: string): Promise<void> {
           clip.startSec,
           clip.endSec
         );
+
+        // Mood-aware music: Gemma classifies the clip, then pickMusicTrack
+        // tries the matching mood folder, falling back to the flat root.
+        let musicPath: string | null = null;
+        try {
+          const clipTranscript = clip.transcript ?? "";
+          const mood = await pickMood(clipTranscript, clip.hookTitle);
+          musicPath = await pickMusicTrack(mood);
+        } catch (moodErr) {
+          console.warn(`[clipper] mood detect failed for ${clip.id}:`, moodErr);
+          musicPath = await pickMusicTrack();
+        }
 
         const editOpts: EditOptions = {
           hookOverlay: { text: clip.hookTitle, durationSec: 4 },
