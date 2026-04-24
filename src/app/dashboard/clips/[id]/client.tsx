@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ExternalLink, Flame, Clock, Send, Sparkles, Check } from "lucide-react";
+import { ArrowLeft, ExternalLink, Flame, Clock, Send, Sparkles, Check, Pencil, Save, X } from "lucide-react";
 
 export type ClipDetail = {
   id: string;
@@ -29,6 +29,89 @@ export type JobDetail = {
   sourceTitle: string | null;
   clips: ClipDetail[];
 };
+
+function HookEditor({
+  jobId,
+  clipId,
+  value,
+  onChange,
+}: {
+  jobId: string;
+  clipId: string;
+  value: string;
+  onChange: (newValue: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    const trimmed = draft.trim();
+    if (!trimmed || trimmed === value) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/clips/${jobId}/clip/${clipId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hookTitle: trimmed }),
+      });
+      if (res.ok) {
+        onChange(trimmed);
+        setEditing(false);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => {
+          setDraft(value);
+          setEditing(true);
+        }}
+        className="group text-left w-full"
+      >
+        <h3 className="text-base font-semibold leading-snug inline">{value}</h3>
+        <Pencil className="inline-block w-3 h-3 ml-2 text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        rows={2}
+        autoFocus
+        className="w-full bg-background border border-accent rounded-lg px-3 py-2 text-base font-semibold focus:outline-none focus:ring-2 focus:ring-accent/40 resize-none"
+      />
+      <div className="flex gap-2">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded bg-accent text-white hover:bg-accent/90 disabled:opacity-50"
+        >
+          <Save className="w-3 h-3" /> Save
+        </button>
+        <button
+          onClick={() => {
+            setDraft(value);
+            setEditing(false);
+          }}
+          className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded text-muted-foreground hover:text-foreground"
+        >
+          <X className="w-3 h-3" /> Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function HookPicker({
   jobId,
@@ -199,9 +282,14 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
                 </div>
               )}
 
-              <h3 className="text-base font-semibold leading-snug">
-                {titles[clip.id] ?? clip.hookTitle}
-              </h3>
+              <HookEditor
+                jobId={job.id}
+                clipId={clip.id}
+                value={titles[clip.id] ?? clip.hookTitle}
+                onChange={(newTitle) =>
+                  setTitles((prev) => ({ ...prev, [clip.id]: newTitle }))
+                }
+              />
               <HookPicker
                 jobId={job.id}
                 clip={{ ...clip, hookTitle: titles[clip.id] ?? clip.hookTitle }}
