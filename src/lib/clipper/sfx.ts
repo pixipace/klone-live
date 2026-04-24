@@ -25,3 +25,11 @@ async function pickFromDir(dir: string): Promise<string | null> {
 export async function pickHookInSfx(): Promise<string | null> {
   return pickFromDir(path.join(SFX_ROOT, "hook-in"));
 }
+
+export async function pickHookOutSfx(): Promise<string | null> {
+  return pickFromDir(path.join(SFX_ROOT, "hook-out"));
+}
+
+export async function pickOutroSfx(): Promise<string | null> {
+  return pickFromDir(path.join(SFX_ROOT, "outro"));
+}

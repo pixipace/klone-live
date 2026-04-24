@@ -19,13 +19,20 @@ function run(cmd: string, args: string[]): Promise<void> {
   });
 }
 
+export type SfxAtTime = {
+  path: string;
+  /** Output-timeline seconds when the SFX should fire. */
+  startSec: number;
+  /** Volume in dB. Default -12. */
+  volumeDb?: number;
+};
+
 export type EditOptions = {
   hookOverlay?: { text: string; durationSec: number };
   musicPath?: string;
   musicVolumeDb?: number;
-  /** Optional one-shot SFX played at t=0 (synced to hook overlay fade-in). */
-  hookSfxPath?: string;
-  hookSfxVolumeDb?: number;
+  /** SFX one-shots scheduled at specific output-timeline times. */
+  sfxs?: SfxAtTime[];
   zoom?: boolean;
   /** Source-pixel x-offset for the 9:16 crop window (face-tracking). If
    * omitted, the strip is centered on the source frame. */
@@ -119,7 +126,7 @@ export async function cutVerticalClip(
   }
 
   let musicInputIdx: number | null = null;
-  let sfxInputIdx: number | null = null;
+  const sfxInputs: Array<{ idx: number; sfx: SfxAtTime }> = [];
   let nextInputIdx = 1;
   if (hookPngPath && options.hookOverlay) {
     args.push(
@@ -136,13 +143,15 @@ export async function cutVerticalClip(
     args.push("-stream_loop", "-1", "-i", options.musicPath);
     musicInputIdx = nextInputIdx++;
   }
-  if (options.hookSfxPath) {
-    args.push("-i", options.hookSfxPath);
-    sfxInputIdx = nextInputIdx++;
+  if (options.sfxs) {
+    for (const sfx of options.sfxs) {
+      args.push("-i", sfx.path);
+      sfxInputs.push({ idx: nextInputIdx++, sfx });
+    }
   }
 
   const useFilterComplex =
-    hookInputIdx !== null || musicInputIdx !== null || sfxInputIdx !== null;
+    hookInputIdx !== null || musicInputIdx !== null || sfxInputs.length > 0;
 
   if (useFilterComplex) {
     const parts: string[] = [];
@@ -172,12 +181,15 @@ export async function cutVerticalClip(
       audioMixInputs.push("[aMusic]");
     }
 
-    if (sfxInputIdx !== null) {
-      const sfxVolDb = options.hookSfxVolumeDb ?? -12;
-      // SFX plays once at t=0; pad it to clip duration so amix doesn't
-      // truncate the mix, but only its own duration carries audio.
-      parts.push(`[${sfxInputIdx}:a]volume=${sfxVolDb}dB,apad[aSfx]`);
-      audioMixInputs.push("[aSfx]");
+    for (const { idx, sfx } of sfxInputs) {
+      const volDb = sfx.volumeDb ?? -12;
+      const delayMs = Math.max(0, Math.round(sfx.startSec * 1000));
+      const label = `aSfx${idx}`;
+      // adelay shifts the SFX to the right output time. apad pads with
+      // silence so amix's duration=first doesn't truncate.
+      const delayPart = delayMs > 0 ? `adelay=${delayMs}|${delayMs},` : "";
+      parts.push(`[${idx}:a]${delayPart}volume=${volDb}dB,apad[${label}]`);
+      audioMixInputs.push(`[${label}]`);
     }
 
     if (audioMixInputs.length > 1) {

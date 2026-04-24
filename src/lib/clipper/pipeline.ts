@@ -7,8 +7,8 @@ import { transcribe } from "./whisper";
 import { pickClips } from "./picker";
 import { cutVerticalClip, type EditOptions } from "./cutter";
 import { pickMusicTrack } from "./music";
-import { pickHookInSfx } from "./sfx";
-import { findSilentGaps } from "./silence";
+import { pickHookInSfx, pickHookOutSfx, pickOutroSfx } from "./sfx";
+import { findSilentGaps, totalRemovedSec } from "./silence";
 import { detectFaceForClip, cropXForFace } from "./face";
 import { pickMood } from "@/lib/ai";
 
@@ -130,14 +130,36 @@ export async function runPipeline(jobId: string): Promise<void> {
           musicPick = await pickMusicTrack();
         }
 
-        const sfxPath = await pickHookInSfx();
+        const HOOK_DUR = 4;
+        const OUTRO_LEAD = 0.6;
+        const inputDur = clip.endSec - clip.startSec;
+        const outputDur = inputDur - totalRemovedSec(gaps);
+
+        const sfxs: Array<{ path: string; startSec: number; volumeDb?: number }> = [];
+        const hookInPath = await pickHookInSfx();
+        if (hookInPath) sfxs.push({ path: hookInPath, startSec: 0, volumeDb: -12 });
+
+        const hookOutPath = await pickHookOutSfx();
+        if (hookOutPath)
+          sfxs.push({
+            path: hookOutPath,
+            startSec: Math.max(0, HOOK_DUR - 0.4),
+            volumeDb: -14,
+          });
+
+        const outroPath = await pickOutroSfx();
+        if (outroPath && outputDur > OUTRO_LEAD)
+          sfxs.push({
+            path: outroPath,
+            startSec: outputDur - OUTRO_LEAD,
+            volumeDb: -12,
+          });
 
         const editOpts: EditOptions = {
-          hookOverlay: { text: clip.hookTitle, durationSec: 4 },
+          hookOverlay: { text: clip.hookTitle, durationSec: HOOK_DUR },
           musicPath: musicPick?.path,
           musicVolumeDb: -25,
-          hookSfxPath: sfxPath ?? undefined,
-          hookSfxVolumeDb: -12,
+          sfxs,
           zoom: true,
           cropX,
           removeRanges: gaps,
