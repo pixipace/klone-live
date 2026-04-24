@@ -38,6 +38,9 @@ export type EditOptions = {
   cinematic?: boolean;
   /** Apply soft vignette darkening at corners. */
   vignette?: boolean;
+  /** Punch-zoom moments — sudden zoom in to 1.15 over 0.3s, hold 0.0s, out
+   * over 0.3s. Times are output-timeline seconds. */
+  punchZooms?: Array<{ atSec: number }>;
   /** Source-pixel x-offset for the 9:16 crop window (face-tracking). If
    * omitted, the strip is centered on the source frame. */
   cropX?: number;
@@ -86,12 +89,31 @@ export async function cutVerticalClip(
     `crop=${TARGET_W}:${TARGET_H}`
   );
 
-  // Step 3 — subtle Ken Burns zoom (1.00 → 1.06 over duration)
-  if (options.zoom) {
+  // Step 3 — zoom: subtle Ken Burns + optional punch zooms layered on top.
+  // zoompan uses `on` (output frame index), not seconds; we convert with on/fps.
+  // Each punch ramps 1.0 → 1.15 over 0.3s, back over 0.3s.
+  if (options.zoom || (options.punchZooms && options.punchZooms.length > 0)) {
     const fps = 30;
     const totalFrames = Math.max(1, Math.round(duration * fps));
+    const baseDelta = options.zoom ? (0.06 / totalFrames).toFixed(6) : "0";
+    // Cap base zoom at 1.06 so it doesn't keep accumulating
+    const baseExpr = options.zoom
+      ? `min(1.06\\,1+${baseDelta}*on)`
+      : `1`;
+
+    const punches = (options.punchZooms ?? []).filter(
+      (p) => p.atSec >= 0 && p.atSec < duration
+    );
+
+    let zoomExpr = baseExpr;
+    for (const p of punches) {
+      const peak = (p.atSec + 0.3).toFixed(3);
+      // Triangular bump: 0.15 max amplitude, 0.3s ramp each side
+      zoomExpr = `${zoomExpr}+max(0\\,0.15*(1-abs(on/${fps}-${peak})/0.3))`;
+    }
+
     vfChain.push(
-      `zoompan=z='min(zoom+${(0.06 / totalFrames).toFixed(6)},1.06)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${TARGET_W}x${TARGET_H}:fps=${fps}`
+      `zoompan=z='${zoomExpr}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${TARGET_W}x${TARGET_H}:fps=${fps}`
     );
   }
 

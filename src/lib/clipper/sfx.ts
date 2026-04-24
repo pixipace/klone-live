@@ -33,3 +33,7 @@ export async function pickHookOutSfx(): Promise<string | null> {
 export async function pickOutroSfx(): Promise<string | null> {
   return pickFromDir(path.join(SFX_ROOT, "outro"));
 }
+
+export async function pickImpactSfx(): Promise<string | null> {
+  return pickFromDir(path.join(SFX_ROOT, "impact"));
+}

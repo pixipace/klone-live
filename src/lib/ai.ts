@@ -439,6 +439,74 @@ Output the JSON.`;
   return "neutral";
 }
 
+export type EmphasisMoment = {
+  /** Seconds into the clip (relative, 0 = clip start). */
+  atSec: number;
+  /** What's said at that moment — for debug/UI. */
+  text: string;
+};
+
+export async function pickEmphasisMoments(
+  segments: Array<{ start: number; end: number; text: string }>,
+  clipStart: number,
+  clipEnd: number,
+  maxMoments: number = 2
+): Promise<EmphasisMoment[]> {
+  // Build clip-local transcript with timestamps
+  const lines = segments
+    .filter((s) => s.end > clipStart && s.start < clipEnd)
+    .map((s) => {
+      const localStart = Math.max(0, s.start - clipStart);
+      return `[${localStart.toFixed(1)}s] ${s.text.trim()}`;
+    })
+    .join("\n");
+
+  if (lines.length === 0) return [];
+
+  const system = `You identify emphasis moments in a short video clip — points where the speaker delivers a punch line, key statistic, dramatic claim, or "stop and listen" beat. These moments get a punch-zoom + impact sound in the edit.
+
+Pick at MOST ${maxMoments} moments. Quality over quantity — only pick moments that genuinely land. If nothing in the clip is a strong emphasis moment, return an empty array.
+
+Output STRICT JSON only:
+{"moments": [{"atSec": <number>, "text": "<short snippet of what's said>"}]}
+
+Rules:
+- atSec is the START of the emphasis word/phrase (not the segment start)
+- Spread moments out: don't pick two within 3 seconds of each other
+- atSec MUST be between 0.5 and ${(clipEnd - clipStart - 1).toFixed(1)} (give the moment room before clip ends)
+- No preamble, no markdown fences, just the JSON.`;
+
+  const prompt = `Clip transcript (timestamps relative to clip start):
+${lines}
+
+Output the JSON.`;
+
+  try {
+    const raw = await generate(prompt, system, {
+      temperature: 0.3,
+      maxTokens: 400,
+      format: "json",
+    });
+    const parsed = JSON.parse(raw) as { moments?: unknown };
+    if (!Array.isArray(parsed.moments)) return [];
+    return parsed.moments
+      .filter(
+        (m): m is EmphasisMoment =>
+          typeof m === "object" &&
+          m !== null &&
+          typeof (m as { atSec?: unknown }).atSec === "number" &&
+          typeof (m as { text?: unknown }).text === "string"
+      )
+      .map((m) => ({
+        atSec: Math.max(0.5, Math.min(clipEnd - clipStart - 1, m.atSec)),
+        text: m.text.slice(0, 100),
+      }))
+      .slice(0, maxMoments);
+  } catch {
+    return [];
+  }
+}
+
 export async function isOllamaUp(): Promise<boolean> {
   try {
     const res = await fetch(`${OLLAMA_URL}/api/tags`);

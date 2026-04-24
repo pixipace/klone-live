@@ -7,10 +7,10 @@ import { transcribe } from "./whisper";
 import { pickClips } from "./picker";
 import { cutVerticalClip, type EditOptions } from "./cutter";
 import { pickMusicTrack } from "./music";
-import { pickHookInSfx, pickHookOutSfx, pickOutroSfx } from "./sfx";
+import { pickHookInSfx, pickHookOutSfx, pickOutroSfx, pickImpactSfx } from "./sfx";
 import { findSilentGaps, totalRemovedSec } from "./silence";
 import { detectFaceForClip, cropXForFace } from "./face";
-import { pickMood } from "@/lib/ai";
+import { pickMood, pickEmphasisMoments } from "@/lib/ai";
 
 const CLIP_OUTPUT_ROOT = path.join(process.cwd(), ".uploads", "clips");
 
@@ -155,6 +155,41 @@ export async function runPipeline(jobId: string): Promise<void> {
             volumeDb: -12,
           });
 
+        // Punch zoom moments — Gemma picks 1-2 emphasis beats.
+        // Convert input-time atSec to output-time by subtracting any silence
+        // gaps that fall before the moment.
+        let punchZooms: Array<{ atSec: number }> = [];
+        try {
+          const moments = await pickEmphasisMoments(
+            transcript.segments,
+            clip.startSec,
+            clip.endSec,
+            2
+          );
+          punchZooms = moments
+            .map((m) => {
+              const removedBefore = gaps
+                .filter((g) => g.endSec < m.atSec)
+                .reduce((sum, g) => sum + (g.endSec - g.startSec), 0);
+              return { atSec: m.atSec - removedBefore };
+            })
+            .filter((p) => p.atSec >= 0 && p.atSec + 0.6 < outputDur);
+
+          // Add an impact SFX synced to each punch (peak at +0.3s)
+          const impactPath = await pickImpactSfx();
+          if (impactPath) {
+            for (const p of punchZooms) {
+              sfxs.push({
+                path: impactPath,
+                startSec: Math.max(0, p.atSec + 0.2),
+                volumeDb: -10,
+              });
+            }
+          }
+        } catch (emphasisErr) {
+          console.warn(`[clipper] emphasis pick failed for ${clip.id}:`, emphasisErr);
+        }
+
         const editOpts: EditOptions = {
           hookOverlay: { text: clip.hookTitle, durationSec: HOOK_DUR },
           musicPath: musicPick?.path,
@@ -163,6 +198,7 @@ export async function runPipeline(jobId: string): Promise<void> {
           zoom: true,
           cinematic: true,
           vignette: true,
+          punchZooms,
           cropX,
           removeRanges: gaps,
         };
