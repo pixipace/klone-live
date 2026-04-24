@@ -23,6 +23,9 @@ export type EditOptions = {
   hookOverlay?: { text: string; durationSec: number };
   musicPath?: string;
   musicVolumeDb?: number;
+  /** Optional one-shot SFX played at t=0 (synced to hook overlay fade-in). */
+  hookSfxPath?: string;
+  hookSfxVolumeDb?: number;
   zoom?: boolean;
   /** Source-pixel x-offset for the 9:16 crop window (face-tracking). If
    * omitted, the strip is centered on the source frame. */
@@ -116,6 +119,7 @@ export async function cutVerticalClip(
   }
 
   let musicInputIdx: number | null = null;
+  let sfxInputIdx: number | null = null;
   let nextInputIdx = 1;
   if (hookPngPath && options.hookOverlay) {
     args.push(
@@ -132,8 +136,13 @@ export async function cutVerticalClip(
     args.push("-stream_loop", "-1", "-i", options.musicPath);
     musicInputIdx = nextInputIdx++;
   }
+  if (options.hookSfxPath) {
+    args.push("-i", options.hookSfxPath);
+    sfxInputIdx = nextInputIdx++;
+  }
 
-  const useFilterComplex = hookInputIdx !== null || musicInputIdx !== null;
+  const useFilterComplex =
+    hookInputIdx !== null || musicInputIdx !== null || sfxInputIdx !== null;
 
   if (useFilterComplex) {
     const parts: string[] = [];
@@ -153,15 +162,30 @@ export async function cutVerticalClip(
     }
 
     const audioInChain = afChain.length > 0 ? afChain.join(",") : "anull";
+    parts.push(`[0:a]${audioInChain}[a0]`);
+
+    const audioMixInputs: string[] = ["[a0]"];
+
     if (musicInputIdx !== null) {
       const volDb = options.musicVolumeDb ?? -25;
-      parts.push(`[0:a]${audioInChain}[a0]`);
-      parts.push(`[${musicInputIdx}:a]volume=${volDb}dB,apad[a1]`);
+      parts.push(`[${musicInputIdx}:a]volume=${volDb}dB,apad[aMusic]`);
+      audioMixInputs.push("[aMusic]");
+    }
+
+    if (sfxInputIdx !== null) {
+      const sfxVolDb = options.hookSfxVolumeDb ?? -12;
+      // SFX plays once at t=0; pad it to clip duration so amix doesn't
+      // truncate the mix, but only its own duration carries audio.
+      parts.push(`[${sfxInputIdx}:a]volume=${sfxVolDb}dB,apad[aSfx]`);
+      audioMixInputs.push("[aSfx]");
+    }
+
+    if (audioMixInputs.length > 1) {
       parts.push(
-        `[a0][a1]amix=inputs=2:duration=first:dropout_transition=0[a]`
+        `${audioMixInputs.join("")}amix=inputs=${audioMixInputs.length}:duration=first:dropout_transition=0[a]`
       );
     } else {
-      parts.push(`[0:a]${audioInChain}[a]`);
+      parts.push(`[a0]anull[a]`);
     }
 
     args.push("-filter_complex", parts.join(";"), "-map", "[v]", "-map", "[a]");

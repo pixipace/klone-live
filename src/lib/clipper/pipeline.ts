@@ -7,6 +7,7 @@ import { transcribe } from "./whisper";
 import { pickClips } from "./picker";
 import { cutVerticalClip, type EditOptions } from "./cutter";
 import { pickMusicTrack } from "./music";
+import { pickHookInSfx } from "./sfx";
 import { findSilentGaps } from "./silence";
 import { detectFaceForClip, cropXForFace } from "./face";
 import { pickMood } from "@/lib/ai";
@@ -129,10 +130,14 @@ export async function runPipeline(jobId: string): Promise<void> {
           musicPick = await pickMusicTrack();
         }
 
+        const sfxPath = await pickHookInSfx();
+
         const editOpts: EditOptions = {
           hookOverlay: { text: clip.hookTitle, durationSec: 4 },
           musicPath: musicPick?.path,
           musicVolumeDb: -25,
+          hookSfxPath: sfxPath ?? undefined,
+          hookSfxVolumeDb: -12,
           zoom: true,
           cropX,
           removeRanges: gaps,
