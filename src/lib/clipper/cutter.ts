@@ -47,6 +47,8 @@ export type EditOptions = {
   /** Comma-separated time ranges to remove from the clip (silence trim).
    * Times are in clip-local seconds. */
   removeRanges?: Array<{ startSec: number; endSec: number }>;
+  /** Word-by-word caption PNG sequence overlay. */
+  captions?: { framePattern: string; fps: number };
 };
 
 export type CutResult = {
@@ -168,6 +170,7 @@ export async function cutVerticalClip(
   }
 
   let musicInputIdx: number | null = null;
+  let captionsInputIdx: number | null = null;
   const sfxInputs: Array<{ idx: number; sfx: SfxAtTime }> = [];
   let nextInputIdx = 1;
   if (hookPngPath && options.hookOverlay) {
@@ -181,6 +184,15 @@ export async function cutVerticalClip(
     );
     hookInputIdx = nextInputIdx++;
   }
+  if (options.captions) {
+    args.push(
+      "-framerate",
+      String(options.captions.fps),
+      "-i",
+      options.captions.framePattern
+    );
+    captionsInputIdx = nextInputIdx++;
+  }
   if (options.musicPath) {
     args.push("-stream_loop", "-1", "-i", options.musicPath);
     musicInputIdx = nextInputIdx++;
@@ -193,11 +205,25 @@ export async function cutVerticalClip(
   }
 
   const useFilterComplex =
-    hookInputIdx !== null || musicInputIdx !== null || sfxInputs.length > 0;
+    hookInputIdx !== null ||
+    captionsInputIdx !== null ||
+    musicInputIdx !== null ||
+    sfxInputs.length > 0;
 
   if (useFilterComplex) {
     const parts: string[] = [];
     parts.push(`[0:v]${vf}[v0]`);
+
+    let lastVideoLabel = "v0";
+
+    if (captionsInputIdx !== null) {
+      // Scale captions sequence to match output, overlay full-frame
+      parts.push(
+        `[${captionsInputIdx}:v]format=rgba,scale=${TARGET_W}:${TARGET_H}[capScaled]`
+      );
+      parts.push(`[${lastVideoLabel}][capScaled]overlay=x=0:y=0[vCap]`);
+      lastVideoLabel = "vCap";
+    }
 
     if (hookInputIdx !== null && options.hookOverlay) {
       const dur = options.hookOverlay.durationSec;
@@ -206,10 +232,10 @@ export async function cutVerticalClip(
         `[${hookInputIdx}:v]format=rgba,fade=t=in:st=0:d=0.4:alpha=1,fade=t=out:st=${fadeOutStart}:d=0.4:alpha=1[hookFaded]`
       );
       parts.push(
-        `[v0][hookFaded]overlay=x=0:y=H*0.08:enable='lt(t,${dur.toFixed(2)})'[v]`
+        `[${lastVideoLabel}][hookFaded]overlay=x=0:y=H*0.08:enable='lt(t,${dur.toFixed(2)})'[v]`
       );
     } else {
-      parts.push(`[v0]null[v]`);
+      parts.push(`[${lastVideoLabel}]null[v]`);
     }
 
     const audioInChain = afChain.length > 0 ? afChain.join(",") : "anull";

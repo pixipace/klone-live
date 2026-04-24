@@ -21,10 +21,22 @@ function run(cmd: string, args: string[]): Promise<{ code: number; stderr: strin
 }
 
 export async function transcribe(audioPath: string): Promise<WhisperResult> {
-  const outBase = audioPath.replace(/\.wav$/, "");
+  return transcribeInner(audioPath, false);
+}
+
+/** Re-transcribe with -ml 1 for word-level timestamps. Used by caption renderer. */
+export async function transcribeWords(audioPath: string): Promise<WhisperResult> {
+  return transcribeInner(audioPath, true);
+}
+
+async function transcribeInner(
+  audioPath: string,
+  wordLevel: boolean
+): Promise<WhisperResult> {
+  const outBase = audioPath.replace(/\.wav$/, wordLevel ? ".words" : "");
   const jsonPath = `${outBase}.json`;
 
-  const { code, stderr } = await run(WHISPER_BIN, [
+  const args = [
     "-m",
     WHISPER_MODEL,
     "-f",
@@ -36,7 +48,10 @@ export async function transcribe(audioPath: string): Promise<WhisperResult> {
     "auto",
     "-t",
     "8",
-  ]);
+  ];
+  if (wordLevel) args.push("-ml", "1");
+
+  const { code, stderr } = await run(WHISPER_BIN, args);
 
   if (code !== 0) {
     throw new Error(`whisper-cli exited ${code}: ${stderr.slice(0, 500)}`);

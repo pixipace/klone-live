@@ -3,9 +3,10 @@ import path from "path";
 import { prisma } from "@/lib/prisma";
 import { CLIPPER_DIRS } from "./types";
 import { downloadYouTube } from "./youtube";
-import { transcribe } from "./whisper";
+import { transcribe, transcribeWords } from "./whisper";
 import { pickClips } from "./picker";
 import { cutVerticalClip, type EditOptions } from "./cutter";
+import { renderCaptionFrames, wordsForClip } from "./captions";
 import { pickMusicTrack } from "./music";
 import { pickHookInSfx, pickHookOutSfx, pickOutroSfx, pickImpactSfx } from "./sfx";
 import { findSilentGaps, totalRemovedSec } from "./silence";
@@ -44,6 +45,15 @@ export async function runPipeline(jobId: string): Promise<void> {
 
     if (transcript.segments.length === 0) {
       throw new Error("Transcript empty — likely silent or unsupported audio");
+    }
+
+    // Word-level pass for captions — second whisper run with -ml 1.
+    // Best-effort: failure here just disables captions, doesn't fail the job.
+    let wordTranscript: typeof transcript | null = null;
+    try {
+      wordTranscript = await transcribeWords(dl.audioPath);
+    } catch (wErr) {
+      console.warn(`[clipper] word-level transcription failed:`, wErr);
     }
 
     await prisma.clipJob.update({
@@ -190,6 +200,33 @@ export async function runPipeline(jobId: string): Promise<void> {
           console.warn(`[clipper] emphasis pick failed for ${clip.id}:`, emphasisErr);
         }
 
+        // Word-by-word captions for this clip
+        let captions: EditOptions["captions"];
+        if (wordTranscript) {
+          try {
+            const words = wordsForClip(
+              wordTranscript.segments,
+              clip.startSec,
+              clip.endSec
+            );
+            if (words.length > 0) {
+              const capsDir = path.join(workDir, `caps-${clip.id}`);
+              const rendered = await renderCaptionFrames(
+                words,
+                outputDur,
+                capsDir,
+                8
+              );
+              captions = {
+                framePattern: rendered.framePattern,
+                fps: rendered.fps,
+              };
+            }
+          } catch (capsErr) {
+            console.warn(`[clipper] caption render failed for ${clip.id}:`, capsErr);
+          }
+        }
+
         const editOpts: EditOptions = {
           hookOverlay: { text: clip.hookTitle, durationSec: HOOK_DUR },
           musicPath: musicPick?.path,
@@ -201,6 +238,7 @@ export async function runPipeline(jobId: string): Promise<void> {
           punchZooms,
           cropX,
           removeRanges: gaps,
+          captions,
         };
 
         const out = await cutVerticalClip(
