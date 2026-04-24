@@ -30,6 +30,7 @@ export async function GET() {
     pages: (meta.pages || []).map((p) => ({ id: p.id, name: p.name })),
     pageCount: meta.pages?.length || 0,
     selectedPageId: meta.selectedPageId ?? meta.pages?.[0]?.id ?? null,
+    expiresAt: account.expiresAt,
   });
 }
 

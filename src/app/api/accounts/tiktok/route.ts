@@ -25,6 +25,7 @@ export async function GET() {
     username: account.username,
     avatar: account.avatar,
     followers: meta.followers,
+    expiresAt: account.expiresAt,
   });
 }
 

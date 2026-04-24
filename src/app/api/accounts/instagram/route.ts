@@ -40,6 +40,7 @@ export async function GET() {
     accountCount: meta.accounts?.length || 0,
     selectedInstagramId:
       meta.selectedInstagramId ?? meta.accounts?.[0]?.instagramId ?? null,
+    expiresAt: account.expiresAt,
   });
 }
 

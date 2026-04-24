@@ -15,6 +15,7 @@ export async function GET() {
     connected: true,
     username: account.username,
     avatar: account.avatar,
+    expiresAt: account.expiresAt,
   });
 }
 

@@ -39,6 +39,7 @@ interface AccountStatus {
   pageCount?: number;
   accounts?: MetaIgAccount[];
   accountCount?: number;
+  expiresAt?: string | null;
 }
 
 interface CombinedStatus {
@@ -50,6 +51,7 @@ interface CombinedStatus {
   igAccounts?: MetaIgAccount[];
   selectedPageId?: string | null;
   selectedInstagramId?: string | null;
+  expiresAt?: string | null;
 }
 
 interface PlatformCard {
@@ -170,6 +172,7 @@ function AccountsContent() {
           igAccounts: igRes.accounts || [],
           selectedPageId: fbRes.selectedPageId ?? null,
           selectedInstagramId: igRes.selectedInstagramId ?? null,
+          expiresAt: fbRes.expiresAt ?? igRes.expiresAt ?? null,
         });
       } else {
         setMetaStatus({ connected: false });
@@ -269,17 +272,49 @@ function AccountsContent() {
                       {isConnected && <Badge variant="success">Connected</Badge>}
                     </div>
                     {isConnected && status?.username ? (
-                      <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {status.username}
-                        {isMeta && metaTotal > 0 && (
-                          <> &middot; {metaTotal} linked asset{metaTotal > 1 ? "s" : ""}</>
-                        )}
-                        {!isMeta &&
-                          "followers" in status &&
-                          typeof status.followers === "number" &&
-                          status.followers > 0 && (
-                            <> &middot; {status.followers} followers</>
+                      <div className="text-xs text-muted-foreground mt-0.5 truncate flex items-center gap-1.5 flex-wrap">
+                        <span className="truncate">
+                          {status.username}
+                          {isMeta && metaTotal > 0 && (
+                            <> &middot; {metaTotal} linked asset{metaTotal > 1 ? "s" : ""}</>
                           )}
+                          {!isMeta &&
+                            "followers" in status &&
+                            typeof status.followers === "number" &&
+                            status.followers > 0 && (
+                              <> &middot; {status.followers} followers</>
+                            )}
+                        </span>
+                        {(() => {
+                          const expiresAt = (status as { expiresAt?: string | null }).expiresAt;
+                          if (!expiresAt) return null;
+                          const daysLeft = Math.floor(
+                            (new Date(expiresAt).getTime() - Date.now()) / 86400000
+                          );
+                          if (daysLeft > 30)
+                            return (
+                              <span className="text-[10px] text-success">
+                                ✓ {daysLeft}d
+                              </span>
+                            );
+                          if (daysLeft > 7)
+                            return (
+                              <span className="text-[10px] text-warning">
+                                ⚠ expires {daysLeft}d
+                              </span>
+                            );
+                          if (daysLeft > 0)
+                            return (
+                              <span className="text-[10px] text-error font-medium">
+                                ⚠ expires {daysLeft}d — reconnect soon
+                              </span>
+                            );
+                          return (
+                            <span className="text-[10px] text-error font-medium">
+                              ✗ expired — reconnect now
+                            </span>
+                          );
+                        })()}
                       </div>
                     ) : (
                       <p className="text-xs text-muted mt-0.5">

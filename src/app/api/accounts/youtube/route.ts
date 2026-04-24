@@ -26,6 +26,7 @@ export async function GET() {
     avatar: account.avatar,
     subscribers: meta.subscribers,
     channelId: account.externalId,
+    expiresAt: account.expiresAt,
   });
 }
 
