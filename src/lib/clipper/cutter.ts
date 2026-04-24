@@ -152,14 +152,16 @@ export async function cutVerticalClip(
 
   // Build ffmpeg command. Music + hook overlay both require filter_complex
   // since they need additional input streams.
+  // -t and -ss MUST go BEFORE -i for the source so they apply to source.mp4
+  // and don't get clobbered by the next input's own -t (e.g., the hook PNG).
   const args: string[] = [
     "-y",
     "-ss",
     startSec.toFixed(2),
-    "-i",
-    sourceVideo,
     "-t",
     duration.toFixed(2),
+    "-i",
+    sourceVideo,
   ];
 
   let hookPngPath: string | null = null;

@@ -235,7 +235,7 @@ export async function runPipeline(jobId: string): Promise<void> {
         const editOpts: EditOptions = {
           hookOverlay: { text: clip.hookTitle, durationSec: HOOK_DUR },
           musicPath: musicPick?.path,
-          musicVolumeDb: -25,
+          musicVolumeDb: -32,
           sfxs,
           zoom: true,
           cinematic: true,
