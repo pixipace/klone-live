@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rm } from "fs/promises";
+import path from "path";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 
@@ -37,9 +39,27 @@ export async function DELETE(
   }
 
   const { id } = await ctx.params;
-  await prisma.clipJob
-    .delete({ where: { id, userId: session.id } as { id: string; userId: string } })
-    .catch(() => {});
+
+  // Verify ownership first so we can safely path-derive the clip dir
+  const job = await prisma.clipJob.findFirst({
+    where: { id, userId: session.id },
+    select: { id: true },
+  });
+  if (!job) {
+    return NextResponse.json({ success: true });
+  }
+
+  // Cascade delete the DB rows (Clip rows go too via Prisma onDelete: Cascade)
+  await prisma.clipJob.delete({ where: { id: job.id } }).catch(() => {});
+
+  // Delete on-disk clip files for this job. Path traversal guard via
+  // strict cuid-style id check.
+  if (/^[a-z0-9]+$/i.test(id)) {
+    const clipsDir = path.join(process.cwd(), ".uploads", "clips", id);
+    await rm(clipsDir, { recursive: true, force: true }).catch((err) => {
+      console.warn(`[clips DELETE] failed to remove ${clipsDir}:`, err);
+    });
+  }
 
   return NextResponse.json({ success: true });
 }
