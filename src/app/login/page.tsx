@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Button } from "@/components/ui/button";
 import { AuthShowcase } from "@/components/shared/auth-showcase";
 import { Loader2 } from "lucide-react";
@@ -80,23 +81,28 @@ export default function LoginPage() {
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
               required
             />
             <div>
-              <Input
+              <PasswordInput
                 label="Password"
-                type="password"
                 placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
                 required
               />
-              <Link
-                href="#"
-                className="text-xs text-muted-foreground hover:text-foreground mt-2 inline-block"
-              >
-                Forgot password?
-              </Link>
+              <p className="text-xs text-muted-foreground mt-2">
+                Forgot password?{" "}
+                <a
+                  href="mailto:pixipace@gmail.com?subject=Klone%20password%20reset"
+                  className="text-accent hover:underline"
+                >
+                  Email us
+                </a>
+                {" "}— self-serve reset coming soon.
+              </p>
             </div>
             <Button className="w-full" size="lg" disabled={loading}>
               {loading ? (

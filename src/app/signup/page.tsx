@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { Input } from "@/components/ui/input";
+import { PasswordInput, StrengthMeter, scorePassword } from "@/components/ui/password-input";
 import { Button } from "@/components/ui/button";
 import { AuthShowcase } from "@/components/shared/auth-showcase";
 import { Loader2 } from "lucide-react";
@@ -91,15 +92,29 @@ export default function SignupPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
             />
-            <Input
-              label="Password"
-              type="password"
-              placeholder="At least 8 characters"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-            <Button className="w-full" size="lg" disabled={loading}>
+            <div>
+              <PasswordInput
+                label="Password"
+                placeholder="At least 8 characters"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={8}
+                autoComplete="new-password"
+              />
+              <div className="mt-2">
+                <StrengthMeter password={password} />
+              </div>
+            </div>
+            <Button
+              className="w-full"
+              size="lg"
+              disabled={
+                loading ||
+                password.length < 8 ||
+                scorePassword(password).label === "weak"
+              }
+            >
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />

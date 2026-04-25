@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
+  Sparkles,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
@@ -102,6 +103,12 @@ export default async function DashboardPage() {
     return "Good evening";
   })();
 
+  const isNewUser =
+    socialAccounts.length === 0 &&
+    postedThisWeek === 0 &&
+    clipsTotal === 0 &&
+    scheduledCount === 0;
+
   return (
     <div className="space-y-8 animate-fade-up">
       <div>
@@ -112,6 +119,47 @@ export default async function DashboardPage() {
           Here&apos;s what&apos;s happening with your content this week.
         </p>
       </div>
+
+      {isNewUser && (
+        <div className="relative overflow-hidden rounded-xl border border-accent/30 bg-gradient-to-br from-accent/10 via-card to-card p-6">
+          <div className="absolute top-0 right-0 w-48 h-48 bg-accent/10 rounded-full blur-3xl -translate-y-12 translate-x-12 pointer-events-none" />
+          <div className="relative">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="w-4 h-4 text-accent" />
+              <span className="text-xs font-medium text-accent uppercase tracking-wider">
+                Welcome to Klone
+              </span>
+            </div>
+            <h3 className="text-lg font-semibold mb-1">Three steps to your first viral clip</h3>
+            <p className="text-sm text-muted-foreground mb-5">
+              Get to your first AI-cut social clip in ~10 minutes.
+            </p>
+            <div className="space-y-3">
+              <Step
+                num={1}
+                title="Connect a social account"
+                desc="Link LinkedIn (active), Instagram, or Facebook so we can post on your behalf."
+                href="/dashboard/accounts"
+                cta="Connect →"
+              />
+              <Step
+                num={2}
+                title="Generate your first clip"
+                desc="Paste a YouTube URL — Klone picks viral moments + auto-edits cinematic 9:16 vertical clips."
+                href="/dashboard/clips"
+                cta="Open Clip Studio →"
+              />
+              <Step
+                num={3}
+                title="Schedule + post"
+                desc="Send a clip to Compose → pick platforms → post now or schedule for later."
+                href="/dashboard/create"
+                cta="Compose →"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stat grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -269,6 +317,38 @@ export default async function DashboardPage() {
         </Link>
       </div>
     </div>
+  );
+}
+
+function Step({
+  num,
+  title,
+  desc,
+  href,
+  cta,
+}: {
+  num: number;
+  title: string;
+  desc: string;
+  href: string;
+  cta: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-start gap-4 p-3 rounded-lg hover:bg-accent/5 transition-colors group"
+    >
+      <div className="w-7 h-7 rounded-full bg-accent/15 text-accent flex items-center justify-center text-xs font-semibold flex-shrink-0">
+        {num}
+      </div>
+      <div className="flex-1 min-w-0">
+        <h4 className="text-sm font-medium">{title}</h4>
+        <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+      </div>
+      <span className="text-xs text-accent self-center opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+        {cta}
+      </span>
+    </Link>
   );
 }
 
