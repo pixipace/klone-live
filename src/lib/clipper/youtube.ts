@@ -34,6 +34,13 @@ function run(cmd: string, args: string[]): Promise<{ stdout: string; stderr: str
 }
 
 export async function probeYouTubeDuration(url: string): Promise<number> {
+  // Direct uploads are pre-probed at upload time and the duration is encoded
+  // into the URL via ?dur=<seconds>. Skip yt-dlp entirely for uploads.
+  if (url.startsWith("upload://")) {
+    const m = url.match(/[?&]dur=([\d.]+)/);
+    if (m) return parseFloat(m[1]);
+    throw new Error("Upload URL missing duration param");
+  }
   const { stdout } = await run("yt-dlp", [
     "--no-playlist",
     "--print",
@@ -57,24 +64,39 @@ export async function downloadYouTube(
   const videoPath = path.join(workDir, "source.mp4");
   const audioPath = path.join(workDir, "audio.wav");
 
-  // Check cache first — if a fresh copy of this URL exists, hardlink/copy
-  // into the work directory and skip yt-dlp entirely.
-  const cached = await readSourceCache(url);
-  if (cached) {
-    console.log(`[youtube] cache HIT for ${url} (saved ~30-60s download)`);
-    await copyFile(cached.videoPath, videoPath);
+  // Track which path was used so the title-resolution block at the end
+  // knows where to look (upload://, cache HIT, or fresh yt-dlp download).
+  let cached: { videoPath: string; title: string } | null = null;
+
+  // Direct uploads: copy from the upload location instead of running yt-dlp.
+  // URL format: upload:///abs/path/to/source.mp4?dur=NNN&title=...
+  if (url.startsWith("upload://")) {
+    const withoutScheme = url.slice("upload://".length).split("?")[0];
+    const sourceOnDisk = withoutScheme.startsWith("/")
+      ? withoutScheme
+      : path.join(process.cwd(), ".uploads", "clipper-sources", withoutScheme);
+    await copyFile(sourceOnDisk, videoPath);
+    console.log(`[youtube] using uploaded source ${sourceOnDisk} for ${jobId}`);
   } else {
-    const videoTemplate = path.join(workDir, "source.%(ext)s");
-    await run("yt-dlp", [
-      "--no-playlist",
-      "-f",
-      "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
-      "--merge-output-format",
-      "mp4",
-      "-o",
-      videoTemplate,
-      url,
-    ]);
+    // Check cache first — if a fresh copy of this URL exists, hardlink/copy
+    // into the work directory and skip yt-dlp entirely.
+    cached = await readSourceCache(url);
+    if (cached) {
+      console.log(`[youtube] cache HIT for ${url} (saved ~30-60s download)`);
+      await copyFile(cached.videoPath, videoPath);
+    } else {
+      const videoTemplate = path.join(workDir, "source.%(ext)s");
+      await run("yt-dlp", [
+        "--no-playlist",
+        "-f",
+        "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
+        "--merge-output-format",
+        "mp4",
+        "-o",
+        videoTemplate,
+        url,
+      ]);
+    }
   }
 
   await run("ffmpeg", [
@@ -102,8 +124,15 @@ export async function downloadYouTube(
   ]);
   const durationSec = parseFloat(probe.stdout.trim()) || 0;
 
-  let title = cached?.title ?? "Untitled";
-  if (!cached) {
+  let title: string;
+  if (url.startsWith("upload://")) {
+    // Title hint is in the query string for uploads
+    const m = url.match(/[?&]title=([^&]+)/);
+    title = m ? decodeURIComponent(m[1]) : "Uploaded video";
+  } else if (cached) {
+    title = cached.title;
+  } else {
+    title = "Untitled";
     try {
       const meta = await run("yt-dlp", ["--no-playlist", "--print", "%(title)s", url]);
       title = meta.stdout.trim() || title;

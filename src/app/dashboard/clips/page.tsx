@@ -16,6 +16,8 @@ import {
   Send,
   Check,
   Save,
+  Upload,
+  Link as LinkIcon,
 } from "lucide-react";
 
 const PUBLISH_PLATFORMS = [
@@ -95,6 +97,8 @@ const STATUS_VARIANT: Record<
 
 export default function ClipsPage() {
   const [url, setUrl] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [mode, setMode] = useState<"url" | "upload">("url");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<ClipJob[]>([]);
@@ -181,23 +185,41 @@ export default function ClipsPage() {
     setError(null);
     setSubmitting(true);
 
-    // Bulk submit: split textarea on whitespace, queue each URL serially
-    // (worker is single-flight on this hardware; queueing many at once is
-    // fine — they just process in order). 2-job inflight cap is enforced
-    // server-side, so we stop submitting once we hit it.
-    const urls = url
-      .split(/\s+/)
-      .map((u) => u.trim())
-      .filter((u) => u.length > 0);
-    if (urls.length === 0) {
-      setSubmitting(false);
-      return;
-    }
-
-    const failures: string[] = [];
-    let successes = 0;
-
     try {
+      if (mode === "upload") {
+        if (!uploadFile) {
+          setError("Pick a video file to upload");
+          return;
+        }
+        const fd = new FormData();
+        fd.append("file", uploadFile);
+        fd.append("captions", String(optCaptions));
+        fd.append("music", String(optMusic));
+        fd.append("punchZooms", String(optPunch));
+        fd.append("broll", String(optBroll));
+        fd.append("translateCaptions", String(optTranslate));
+        if (guidance.trim()) fd.append("guidance", guidance.trim());
+        const res = await fetch("/api/clips/upload", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error || "Upload failed");
+        } else {
+          setUploadFile(null);
+          fetchJobs();
+        }
+        return;
+      }
+
+      // URL mode — bulk submit: split on whitespace, queue each serially.
+      const urls = url
+        .split(/\s+/)
+        .map((u) => u.trim())
+        .filter((u) => u.length > 0);
+      if (urls.length === 0) return;
+
+      const failures: string[] = [];
+      let successes = 0;
+
       for (const u of urls) {
         const res = await fetch("/api/clips", {
           method: "POST",
@@ -215,7 +237,6 @@ export default function ClipsPage() {
         const data = await res.json();
         if (!res.ok) {
           failures.push(`${u.slice(0, 60)}${u.length > 60 ? "…" : ""}: ${data.error || "failed"}`);
-          // If we hit the inflight cap (429), stop trying — rest will fail too
           if (res.status === 429) break;
         } else {
           successes += 1;
@@ -263,32 +284,92 @@ export default function ClipsPage() {
           <Video className="w-4 h-4 text-error" />
           New Clip Job
         </CardTitle>
+        <div className="flex gap-1 mb-3 p-0.5 rounded-lg bg-card border border-border w-fit">
+          <button
+            onClick={() => setMode("url")}
+            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md transition-colors ${
+              mode === "url" ? "bg-accent text-white" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <LinkIcon className="w-3.5 h-3.5" />
+            YouTube URL
+          </button>
+          <button
+            onClick={() => setMode("upload")}
+            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md transition-colors ${
+              mode === "upload" ? "bg-accent text-white" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Upload file
+          </button>
+        </div>
         <form onSubmit={submit} className="flex flex-col gap-2">
-          <textarea
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder={
-              "https://youtube.com/watch?v=...\n\nOr paste several URLs (one per line) to queue them all."
-            }
-            required
-            disabled={submitting}
-            rows={url.includes("\n") ? Math.min(8, url.split("\n").length + 1) : 2}
-            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 font-mono resize-none"
-          />
+          {mode === "url" ? (
+            <textarea
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder={
+                "https://youtube.com/watch?v=...\n\nOr paste several URLs (one per line) to queue them all."
+              }
+              required
+              disabled={submitting}
+              rows={url.includes("\n") ? Math.min(8, url.split("\n").length + 1) : 2}
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 font-mono resize-none"
+            />
+          ) : (
+            <div className="border border-dashed border-border rounded-lg p-5 text-center">
+              <input
+                id="clip-upload"
+                type="file"
+                accept="video/mp4,video/quicktime,video/*"
+                onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                disabled={submitting}
+                className="hidden"
+              />
+              <label
+                htmlFor="clip-upload"
+                className="cursor-pointer inline-flex flex-col items-center gap-2"
+              >
+                <Upload className="w-6 h-6 text-muted-foreground" />
+                <span className="text-sm font-medium">
+                  {uploadFile ? uploadFile.name : "Choose an MP4 file"}
+                </span>
+                {uploadFile && (
+                  <span className="text-[11px] text-muted">
+                    {(uploadFile.size / 1024 / 1024).toFixed(1)} MB
+                  </span>
+                )}
+                {!uploadFile && (
+                  <span className="text-[11px] text-muted">
+                    Max 1 GB · use a YouTube URL for longer videos
+                  </span>
+                )}
+              </label>
+            </div>
+          )}
           <div className="flex justify-between items-center">
             <span className="text-[11px] text-muted">
-              {(() => {
-                const n = url.split(/\s+/).filter((u) => u.trim().length > 0).length;
-                return n > 1 ? `${n} URLs queued` : "";
-              })()}
+              {mode === "url"
+                ? (() => {
+                    const n = url.split(/\s+/).filter((u) => u.trim().length > 0).length;
+                    return n > 1 ? `${n} URLs queued` : "";
+                  })()
+                : ""}
             </span>
-            <Button type="submit" disabled={submitting || !url.trim()}>
+            <Button
+              type="submit"
+              disabled={
+                submitting ||
+                (mode === "url" ? !url.trim() : !uploadFile)
+              }
+            >
               {submitting ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
                 <Sparkles className="w-4 h-4 mr-2" />
               )}
-              Find Clips
+              {mode === "upload" ? "Upload & Find Clips" : "Find Clips"}
             </Button>
           </div>
         </form>
