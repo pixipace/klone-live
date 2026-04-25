@@ -49,6 +49,13 @@ export type EditOptions = {
   removeRanges?: Array<{ startSec: number; endSec: number }>;
   /** Word-by-word caption PNG sequence overlay. */
   captions?: { framePattern: string; fps: number };
+  /** B-roll corner PiP overlays — each is a full-frame transparent PNG with
+   * the rounded-corner thumbnail rendered top-right. Time-gated, fades in/out. */
+  brollOverlays?: Array<{
+    framePath: string;
+    startSec: number;
+    endSec: number;
+  }>;
 };
 
 export type CutResult = {
@@ -174,6 +181,10 @@ export async function cutVerticalClip(
   let musicInputIdx: number | null = null;
   let captionsInputIdx: number | null = null;
   const sfxInputs: Array<{ idx: number; sfx: SfxAtTime }> = [];
+  const brollInputs: Array<{
+    idx: number;
+    overlay: { framePath: string; startSec: number; endSec: number };
+  }> = [];
   let nextInputIdx = 1;
   if (hookPngPath && options.hookOverlay) {
     args.push(
@@ -195,6 +206,13 @@ export async function cutVerticalClip(
     );
     captionsInputIdx = nextInputIdx++;
   }
+  if (options.brollOverlays) {
+    for (const ov of options.brollOverlays) {
+      const dur = Math.max(0.5, ov.endSec - ov.startSec);
+      args.push("-loop", "1", "-t", dur.toFixed(2), "-i", ov.framePath);
+      brollInputs.push({ idx: nextInputIdx++, overlay: ov });
+    }
+  }
   if (options.musicPath) {
     args.push("-stream_loop", "-1", "-i", options.musicPath);
     musicInputIdx = nextInputIdx++;
@@ -209,6 +227,7 @@ export async function cutVerticalClip(
   const useFilterComplex =
     hookInputIdx !== null ||
     captionsInputIdx !== null ||
+    brollInputs.length > 0 ||
     musicInputIdx !== null ||
     sfxInputs.length > 0;
 
@@ -225,6 +244,26 @@ export async function cutVerticalClip(
       );
       parts.push(`[${lastVideoLabel}][capScaled]overlay=x=0:y=0[vCap]`);
       lastVideoLabel = "vCap";
+    }
+
+    // B-roll PiP overlays — each frame PNG is full 1080x1920 transparent with
+    // the rounded thumbnail rendered top-right. Time-gated via enable= and
+    // fade in/out for a smooth pop. Stacked under the hook so hook wins on
+    // any timing overlap (shouldn't happen — picker constrains startSec>=4.5).
+    for (let bi = 0; bi < brollInputs.length; bi++) {
+      const { idx, overlay } = brollInputs[bi];
+      const fadeOutStart = Math.max(
+        overlay.startSec,
+        overlay.endSec - 0.25
+      ).toFixed(3);
+      parts.push(
+        `[${idx}:v]format=rgba,fade=t=in:st=${overlay.startSec.toFixed(3)}:d=0.25:alpha=1,fade=t=out:st=${fadeOutStart}:d=0.25:alpha=1[brollFaded${bi}]`
+      );
+      const outLabel = `vBroll${bi}`;
+      parts.push(
+        `[${lastVideoLabel}][brollFaded${bi}]overlay=x=0:y=0:enable='between(t,${overlay.startSec.toFixed(3)},${overlay.endSec.toFixed(3)})'[${outLabel}]`
+      );
+      lastVideoLabel = outLabel;
     }
 
     if (hookInputIdx !== null && options.hookOverlay) {

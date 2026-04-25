@@ -52,11 +52,13 @@ export async function POST(request: NextRequest) {
     captions = true,
     music = true,
     punchZooms = true,
+    broll = false,
   } = body as {
     sourceUrl?: string;
     captions?: boolean;
     music?: boolean;
     punchZooms?: boolean;
+    broll?: boolean;
   };
 
   if (!sourceUrl || typeof sourceUrl !== "string") {
@@ -112,6 +114,7 @@ export async function POST(request: NextRequest) {
       optCaptions: !!captions,
       optMusic: !!music,
       optPunchZooms: !!punchZooms,
+      optBroll: !!broll,
     },
   });
 

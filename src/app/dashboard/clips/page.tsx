@@ -60,6 +60,7 @@ export default function ClipsPage() {
   const [optCaptions, setOptCaptions] = useState(true);
   const [optMusic, setOptMusic] = useState(true);
   const [optPunch, setOptPunch] = useState(true);
+  const [optBroll, setOptBroll] = useState(false);
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -90,6 +91,7 @@ export default function ClipsPage() {
           captions: optCaptions,
           music: optMusic,
           punchZooms: optPunch,
+          broll: optBroll,
         }),
       });
       const data = await res.json();
@@ -181,11 +183,28 @@ export default function ClipsPage() {
             />
             Punch zooms + impact SFX
           </label>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={optBroll}
+              onChange={(e) => setOptBroll(e.target.checked)}
+              className="accent-accent"
+            />
+            B-roll corner overlay
+            <span className="text-[10px] text-muted">(beta · +1-2min)</span>
+          </label>
         </div>
         <p className="text-[11px] text-muted-foreground mt-3">
           Max 30 min source. Processing takes ~5-10 min with all features on.
           Up to 2 jobs at once.
         </p>
+        {optBroll && (
+          <p className="text-[11px] text-muted mt-1.5 leading-relaxed">
+            B-roll finds reference images from Wikipedia (Pexels/Pixabay too if
+            keys are set) for proper nouns the speaker mentions. Only added when
+            the AI is confident the image actually matches — otherwise skipped.
+          </p>
+        )}
       </Card>
 
       <div className="space-y-3">

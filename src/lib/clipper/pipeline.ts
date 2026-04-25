@@ -11,6 +11,7 @@ import { pickMusicTrack } from "./music";
 import { pickHookInSfx, pickHookOutSfx, pickOutroSfx, pickImpactSfx } from "./sfx";
 import { findSilentGaps, totalRemovedSec } from "./silence";
 import { detectFaceForClip, cropXForFace } from "./face";
+import { resolveClipBroll } from "./broll";
 import { pickMood, pickEmphasisMoments } from "@/lib/ai";
 
 const CLIP_OUTPUT_ROOT = path.join(process.cwd(), ".uploads", "clips");
@@ -86,9 +87,10 @@ export async function runPipeline(jobId: string): Promise<void> {
       process.env.CAPTIONS_ENABLED !== "false";
     const musicEnabled = job.optMusic !== false;
     const punchZoomsEnabled = job.optPunchZooms !== false;
-    if (!captionsEnabled || !musicEnabled || !punchZoomsEnabled) {
+    const brollEnabled = job.optBroll === true;
+    if (!captionsEnabled || !musicEnabled || !punchZoomsEnabled || brollEnabled) {
       console.log(
-        `[clipper] toggles for ${jobId}: captions=${captionsEnabled} music=${musicEnabled} punchZooms=${punchZoomsEnabled}`
+        `[clipper] toggles for ${jobId}: captions=${captionsEnabled} music=${musicEnabled} punchZooms=${punchZoomsEnabled} broll=${brollEnabled}`
       );
     }
 
@@ -156,10 +158,31 @@ export async function runPipeline(jobId: string): Promise<void> {
         },
       });
       try {
+        // Pre-compute silence gaps + output duration synchronously so
+        // B-roll resolution can run inside the parallel prep block too
+        // (B-roll picker uses input-time, we map → output-time post-trim).
+        const gaps = findSilentGaps(
+          transcript.segments,
+          clip.startSec,
+          clip.endSec
+        );
+        const HOOK_DUR = 4;
+        const OUTRO_LEAD = 0.6;
+        const inputDur = clip.endSec - clip.startSec;
+        const outputDur = inputDur - totalRemovedSec(gaps);
+
+        // Convert input-time t → cumulative seconds removed before t. Used to
+        // map B-roll moments (picked in input time) onto the post-trim timeline.
+        const silenceMappingFn = (inputT: number): number =>
+          gaps
+            .filter((g) => g.endSec <= inputT)
+            .reduce((sum, g) => sum + (g.endSec - g.startSec), 0);
+
         // Run independent prep tasks in parallel — face detect, mood
-        // classification, emphasis pick. Silence-gap calc is sync so
-        // it runs separately. ~10-15s saved per clip vs sequential.
-        const [face, moodPickResult, emphasisMomentsRaw] = await Promise.all([
+        // classification, emphasis pick, B-roll resolve. ~10-15s saved per
+        // clip vs sequential. B-roll is the slowest (Gemma vision per
+        // candidate) so kicking it off early matters.
+        const [face, moodPickResult, emphasisMomentsRaw, brollOverlays] = await Promise.all([
           detectFaceForClip(dl.videoPath, clip.startSec, clip.endSec, workDir).catch(
             (err) => {
               console.warn(`[clipper] face detect failed for ${clip.id}:`, err);
@@ -185,6 +208,20 @@ export async function runPipeline(jobId: string): Promise<void> {
                 return [];
               })
             : Promise.resolve([]),
+          brollEnabled
+            ? resolveClipBroll({
+                segments: transcript.segments,
+                clipStart: clip.startSec,
+                clipEnd: clip.endSec,
+                outputDur,
+                workDir,
+                clipId: clip.id,
+                silenceMappingFn,
+              }).catch((err) => {
+                console.warn(`[clipper] broll resolve failed for ${clip.id}:`, err);
+                return [];
+              })
+            : Promise.resolve([]),
         ]);
 
         let cropX: number | undefined;
@@ -194,18 +231,6 @@ export async function runPipeline(jobId: string): Promise<void> {
         }
 
         const musicPick = moodPickResult;
-
-        // Silence gaps from Whisper (sync, just array filter)
-        const gaps = findSilentGaps(
-          transcript.segments,
-          clip.startSec,
-          clip.endSec
-        );
-
-        const HOOK_DUR = 4;
-        const OUTRO_LEAD = 0.6;
-        const inputDur = clip.endSec - clip.startSec;
-        const outputDur = inputDur - totalRemovedSec(gaps);
 
         const sfxs: Array<{ path: string; startSec: number; volumeDb?: number }> = [];
         const hookInPath = await pickHookInSfx();
@@ -305,6 +330,14 @@ export async function runPipeline(jobId: string): Promise<void> {
           cropX,
           removeRanges: gaps,
           captions,
+          brollOverlays:
+            brollOverlays.length > 0
+              ? brollOverlays.map((b) => ({
+                  framePath: b.framePath,
+                  startSec: b.startSec,
+                  endSec: b.endSec,
+                }))
+              : undefined,
         };
 
         const out = await cutVerticalClip(
@@ -321,6 +354,18 @@ export async function runPipeline(jobId: string): Promise<void> {
             videoPath: `/api/uploads/clips/${jobId}/${path.basename(out.videoPath)}`,
             thumbnailPath: `/api/uploads/clips/${jobId}/${path.basename(out.thumbnailPath)}`,
             musicAttribution: musicPick?.attribution ?? null,
+            brollMoments:
+              brollOverlays.length > 0
+                ? JSON.stringify(
+                    brollOverlays.map((b) => ({
+                      startSec: Number(b.startSec.toFixed(2)),
+                      endSec: Number(b.endSec.toFixed(2)),
+                      query: b.query,
+                      source: b.source,
+                      attribution: b.attribution,
+                    }))
+                  )
+                : null,
           },
         });
         cutCount += 1;

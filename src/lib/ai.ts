@@ -514,6 +514,149 @@ Output the JSON.`;
   }
 }
 
+export type BrollMomentPick = {
+  /** Output-timeline seconds when the B-roll should appear (>= 4 to avoid hook). */
+  startSec: number;
+  /** Output-timeline seconds when it should disappear. */
+  endSec: number;
+  /** Search query — what to find a visual of. Be specific. */
+  query: string;
+  /** Hint for which source to prefer. */
+  type: "person" | "place" | "thing" | "event";
+};
+
+export async function pickBrollMoments(
+  segments: Array<{ start: number; end: number; text: string }>,
+  clipStart: number,
+  clipEnd: number,
+  maxMoments: number = 3
+): Promise<BrollMomentPick[]> {
+  const lines = segments
+    .filter((s) => s.end > clipStart && s.start < clipEnd)
+    .map((s) => {
+      const localStart = Math.max(0, s.start - clipStart);
+      const localEnd = Math.min(clipEnd - clipStart, s.end - clipStart);
+      return `[${localStart.toFixed(1)}-${localEnd.toFixed(1)}s] ${s.text.trim()}`;
+    })
+    .join("\n");
+
+  if (lines.length === 0) return [];
+
+  const clipDur = clipEnd - clipStart;
+  const minStart = 4.5; // Hook overlay occupies first ~4s
+  const maxEnd = clipDur - 0.5;
+
+  const system = `You identify moments in a short video clip where the speaker mentions a CONCRETE, VISUAL subject — and adding a small reference image in the corner would make the clip more engaging.
+
+ONLY pick moments with subjects that have an obvious visual representation:
+- Named PEOPLE ("Elon Musk", "Marie Curie")
+- Named PLACES ("Eiffel Tower", "Tokyo", "Mount Everest")
+- THINGS / objects ("Tesla Model S", "MacBook Pro", "ancient sword")
+- Historical EVENTS ("Apollo 11 landing", "fall of Rome")
+
+DO NOT pick:
+- Abstract concepts ("freedom", "happiness", "the economy")
+- Opinions / philosophy / advice
+- Vague generic terms ("a guy", "stuff", "things people do")
+- The speaker's own opinion or emotion
+- Anything that wouldn't have a clear single Wikipedia / stock photo result
+
+Quality over quantity. If nothing in the clip is genuinely showable, return an empty array. Pick AT MOST ${maxMoments} moments.
+
+Output STRICT JSON only:
+{"moments": [{"startSec": <number>, "endSec": <number>, "query": "<short search phrase>", "type": "person"|"place"|"thing"|"event"}]}
+
+Rules:
+- startSec MUST be >= ${minStart.toFixed(1)} (the hook occupies the first ${minStart}s)
+- endSec MUST be <= ${maxEnd.toFixed(1)}
+- Each moment should last 2.5–4.5 seconds
+- Spread moments out: at least 3 seconds between consecutive moments
+- "query" should be 2–5 words, optimized for search (proper nouns, no filler)
+- No preamble, no markdown, just JSON.`;
+
+  const prompt = `Clip transcript (timestamps relative to clip start):
+${lines}
+
+Output the JSON.`;
+
+  try {
+    const raw = await generate(prompt, system, {
+      temperature: 0.3,
+      maxTokens: 600,
+      format: "json",
+    });
+    const parsed = JSON.parse(raw) as { moments?: unknown };
+    if (!Array.isArray(parsed.moments)) return [];
+
+    const out: BrollMomentPick[] = [];
+    for (const m of parsed.moments) {
+      if (
+        typeof m !== "object" ||
+        m === null ||
+        typeof (m as { startSec?: unknown }).startSec !== "number" ||
+        typeof (m as { endSec?: unknown }).endSec !== "number" ||
+        typeof (m as { query?: unknown }).query !== "string" ||
+        typeof (m as { type?: unknown }).type !== "string"
+      ) {
+        continue;
+      }
+      const moment = m as BrollMomentPick;
+      const startSec = Math.max(minStart, Math.min(maxEnd - 1, moment.startSec));
+      const endSec = Math.max(startSec + 2, Math.min(maxEnd, moment.endSec));
+      const query = moment.query.trim().slice(0, 80);
+      if (!query) continue;
+      const type = (["person", "place", "thing", "event"] as const).includes(
+        moment.type as never
+      )
+        ? moment.type
+        : "thing";
+      // Enforce 3s spacing from previous accepted moment
+      if (out.length > 0 && startSec - out[out.length - 1].endSec < 3) continue;
+      out.push({ startSec, endSec, query, type });
+      if (out.length >= maxMoments) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+export async function scoreBrollImageMatch(
+  imageBase64: string,
+  query: string
+): Promise<number> {
+  const system = `You score how well an image matches a search query for use as a contextual B-roll reference. Output JSON only.
+
+Schema: {"score": 0-10, "reason": "<short>"}
+
+Scoring guide:
+- 10: Image is exactly what query describes (e.g., "Eiffel Tower" → photo of Eiffel Tower)
+- 7-9: Image clearly depicts the subject, even if not the most iconic shot
+- 4-6: Image is related but ambiguous or generic
+- 0-3: Image is unrelated, low-quality, or misleading
+
+Be strict. Better to reject a mediocre match than show a confusing image.`;
+
+  const prompt = `Search query: "${query}"
+Score how well this image matches.`;
+
+  try {
+    const raw = await generate(prompt, system, {
+      temperature: 0.1,
+      maxTokens: 100,
+      format: "json",
+      images: [imageBase64],
+    });
+    const parsed = JSON.parse(raw) as { score?: unknown };
+    if (typeof parsed.score === "number") {
+      return Math.max(0, Math.min(10, parsed.score));
+    }
+  } catch {
+    // fall through
+  }
+  return 0;
+}
+
 export async function isOllamaUp(): Promise<boolean> {
   try {
     const res = await fetch(`${OLLAMA_URL}/api/tags`);
