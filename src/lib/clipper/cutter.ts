@@ -208,8 +208,14 @@ export async function cutVerticalClip(
   }
   if (options.brollOverlays) {
     for (const ov of options.brollOverlays) {
-      const dur = Math.max(0.5, ov.endSec - ov.startSec);
-      args.push("-loop", "1", "-t", dur.toFixed(2), "-i", ov.framePath);
+      // No -t: input loops infinitely so frames exist at any output time.
+      // FFmpeg only consumes frames the overlay actually pulls (gated by
+      // enable=between(t,start,end) in the filter chain). Output stream
+      // length is bounded by the main video, not these inputs.
+      // PREVIOUSLY: -t was set to (endSec - startSec) = e.g. 3s, but the
+      // fade timestamp was (output) startSec = e.g. 4.5s, so by the time
+      // the fade should fire the input's frames had ended → no overlay.
+      args.push("-loop", "1", "-i", ov.framePath);
       brollInputs.push({ idx: nextInputIdx++, overlay: ov });
     }
   }
