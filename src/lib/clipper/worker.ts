@@ -2,6 +2,10 @@ import { rm } from "fs/promises";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 import { runPipeline } from "./pipeline";
+import { autoDistributeClips } from "./distribute";
+import { ALL_PLATFORMS, type PlatformId } from "@/lib/platforms";
+
+const PLATFORM_SET = new Set<string>(ALL_PLATFORMS);
 
 const POLL_INTERVAL_MS = 10_000;
 const STUCK_JOB_THRESHOLD_MS = 30 * 60 * 1000; // 30 min
@@ -92,10 +96,69 @@ async function tick() {
   console.log(`[clipper-worker] picking up job ${job.id} (${job.sourceUrl})`);
   try {
     await runPipeline(job.id);
+    await maybeAutoPublish(job.id);
   } catch (err) {
     console.error(`[clipper-worker] pipeline crashed:`, err);
   } finally {
     inflight = false;
+  }
+}
+
+/**
+ * If the job's owner has clipperAutoPublish enabled and saved platform
+ * prefs, schedule the rendered clips immediately using those prefs. Runs
+ * AFTER runPipeline returns successfully — never blocks the pipeline
+ * itself, and DONE → AUTO-PUBLISHED is logged separately so failures here
+ * don't appear to kill the clip job.
+ */
+async function maybeAutoPublish(jobId: string): Promise<void> {
+  const job = await prisma.clipJob.findUnique({
+    where: { id: jobId },
+    include: {
+      user: {
+        select: {
+          id: true,
+          clipperAutoPublish: true,
+          clipperPlatforms: true,
+          clipperClipsPerDay: true,
+          clipperSkipWeekends: true,
+          clipperWithAiHashtags: true,
+        },
+      },
+      clips: true,
+    },
+  });
+  if (!job || job.status !== "DONE") return;
+  if (!job.user.clipperAutoPublish) return;
+
+  const platforms = (job.user.clipperPlatforms ?? "")
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p): p is PlatformId => PLATFORM_SET.has(p));
+  if (platforms.length === 0) {
+    console.warn(
+      `[clipper-worker] auto-publish on for ${job.user.id} but no platforms saved — skipping`
+    );
+    return;
+  }
+
+  const renderedClips = job.clips.filter((c) => c.videoPath !== null);
+  if (renderedClips.length === 0) return;
+
+  try {
+    const result = await autoDistributeClips({
+      userId: job.user.id,
+      clips: renderedClips,
+      platforms,
+      clipsPerDay: job.user.clipperClipsPerDay,
+      skipWeekends: job.user.clipperSkipWeekends,
+      withAiHashtags: job.user.clipperWithAiHashtags,
+    });
+    console.log(
+      `[clipper-worker] auto-published ${jobId}: ${result.scheduled} post(s) across ${platforms.length} platform(s)`
+    );
+  } catch (err) {
+    console.error(`[clipper-worker] auto-publish failed for ${jobId}:`, err);
   }
 }
 

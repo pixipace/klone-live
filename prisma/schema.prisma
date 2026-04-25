@@ -21,6 +21,15 @@ model User {
   notes               String?
   notifyOnPost        Boolean              @default(true)
   audienceTimezone    String?
+  /** Saved publishing prefs — applied when user manually distributes a job
+    * (panel pre-fills) AND when clipperAutoPublish is true (auto-trigger
+    * after clip rendering completes). */
+  clipperAutoPublish     Boolean @default(false)
+  clipperPlatforms       String?
+  clipperClipsPerDay     Int     @default(1)
+  clipperSkipWeekends    Boolean @default(true)
+  clipperWithAiHashtags  Boolean @default(true)
+  clipperTimezone        String?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   socialAccounts      SocialAccount[]

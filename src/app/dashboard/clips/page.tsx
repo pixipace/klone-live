@@ -13,7 +13,41 @@ import {
   Trash2,
   Clock,
   Video,
+  Send,
+  Check,
+  Save,
 } from "lucide-react";
+
+const PUBLISH_PLATFORMS = [
+  { id: "linkedin", name: "LinkedIn", color: "#0077b5" },
+  { id: "instagram", name: "Instagram", color: "#e4405f" },
+  { id: "facebook", name: "Facebook", color: "#1877f2" },
+  { id: "tiktok", name: "TikTok", color: "#00f2ea" },
+  { id: "youtube", name: "YouTube", color: "#ff0000" },
+] as const;
+
+const TIMEZONES = [
+  "America/New_York",
+  "America/Los_Angeles",
+  "America/Chicago",
+  "Europe/London",
+  "Europe/Paris",
+  "Asia/Karachi",
+  "Asia/Kolkata",
+  "Asia/Dubai",
+  "Asia/Singapore",
+  "Australia/Sydney",
+  "UTC",
+];
+
+type PublishPrefs = {
+  autoPublish: boolean;
+  platforms: string[];
+  clipsPerDay: number;
+  skipWeekends: boolean;
+  withAiHashtags: boolean;
+  timezone: string | null;
+};
 
 type ClipJob = {
   id: string;
@@ -61,6 +95,11 @@ export default function ClipsPage() {
   const [optMusic, setOptMusic] = useState(true);
   const [optPunch, setOptPunch] = useState(true);
   const [optBroll, setOptBroll] = useState(false);
+  const [prefs, setPrefs] = useState<PublishPrefs | null>(null);
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  const [prefsSaving, setPrefsSaving] = useState(false);
+  const [prefsError, setPrefsError] = useState<string | null>(null);
+  const [prefsSavedAt, setPrefsSavedAt] = useState<number | null>(null);
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -72,11 +111,56 @@ export default function ClipsPage() {
     }
   }, []);
 
+  const fetchPrefs = useCallback(async () => {
+    try {
+      const res = await fetch("/api/user/clipper-prefs");
+      const data = await res.json();
+      if (res.ok) {
+        setPrefs({
+          autoPublish: !!data.autoPublish,
+          platforms: Array.isArray(data.platforms) ? data.platforms : [],
+          clipsPerDay: typeof data.clipsPerDay === "number" ? data.clipsPerDay : 1,
+          skipWeekends: data.skipWeekends !== false,
+          withAiHashtags: data.withAiHashtags !== false,
+          timezone:
+            data.timezone ||
+            (typeof window !== "undefined"
+              ? Intl.DateTimeFormat().resolvedOptions().timeZone
+              : null),
+        });
+      }
+    } catch {
+      // non-fatal — prefs UI just won't render
+    }
+  }, []);
+
+  const savePrefs = async () => {
+    if (!prefs) return;
+    setPrefsSaving(true);
+    setPrefsError(null);
+    try {
+      const res = await fetch("/api/user/clipper-prefs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(prefs),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPrefsError(data.error || "Failed to save");
+      } else {
+        setPrefsSavedAt(Date.now());
+      }
+    } finally {
+      setPrefsSaving(false);
+    }
+  };
+
   useEffect(() => {
     fetchJobs();
+    fetchPrefs();
     const t = setInterval(fetchJobs, 5000);
     return () => clearInterval(t);
-  }, [fetchJobs]);
+  }, [fetchJobs, fetchPrefs]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -206,6 +290,195 @@ export default function ClipsPage() {
           </p>
         )}
       </Card>
+
+      {prefs && (
+        <Card className="overflow-hidden">
+          <button
+            onClick={() => setPrefsOpen((o) => !o)}
+            className="w-full flex items-center justify-between gap-3 text-left"
+          >
+            <div className="flex items-center gap-2">
+              <Send className="w-4 h-4 text-accent" />
+              <CardTitle className="text-base">Publishing preferences</CardTitle>
+              {prefs.autoPublish && (
+                <Badge variant="accent">Auto-publish ON</Badge>
+              )}
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {prefsOpen ? "Hide" : "Edit"}
+            </span>
+          </button>
+          {!prefsOpen && (
+            <p className="text-xs text-muted-foreground mt-2">
+              {prefs.autoPublish
+                ? `Finished clips will auto-schedule to ${prefs.platforms.length || "0"} platform${prefs.platforms.length === 1 ? "" : "s"} (${prefs.clipsPerDay}/day${prefs.skipWeekends ? ", skip weekends" : ""}).`
+                : "Set defaults once. Optionally turn on auto-publish to skip the per-job step."}
+            </p>
+          )}
+          {prefsOpen && (
+            <div className="mt-4 space-y-4">
+              <label className="flex items-start gap-2.5 text-sm cursor-pointer p-3 rounded-lg bg-accent/5 border border-accent/20">
+                <input
+                  type="checkbox"
+                  checked={prefs.autoPublish}
+                  onChange={(e) =>
+                    setPrefs({ ...prefs, autoPublish: e.target.checked })
+                  }
+                  className="accent-accent mt-0.5"
+                />
+                <div>
+                  <span className="font-medium">
+                    Auto-publish new jobs when clips are ready
+                  </span>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    As soon as a clip job finishes, Klone schedules it across
+                    your selected platforms using the settings below — no extra
+                    click. Leave off to review each job manually.
+                  </p>
+                </div>
+              </label>
+
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                  Default platforms
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {PUBLISH_PLATFORMS.map((p) => {
+                    const active = prefs.platforms.includes(p.id);
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() =>
+                          setPrefs({
+                            ...prefs,
+                            platforms: active
+                              ? prefs.platforms.filter((x) => x !== p.id)
+                              : [...prefs.platforms, p.id],
+                          })
+                        }
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs transition-all ${
+                          active
+                            ? "border-accent bg-accent/10 text-foreground"
+                            : "border-border bg-card text-muted-foreground"
+                        }`}
+                      >
+                        <div
+                          className="w-4 h-4 rounded text-white text-[8px] font-bold flex items-center justify-center"
+                          style={{ backgroundColor: p.color }}
+                        >
+                          {p.name[0]}
+                        </div>
+                        {p.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-muted mt-2">
+                  Connect these accounts in{" "}
+                  <Link href="/dashboard/accounts" className="text-accent hover:underline">
+                    Accounts
+                  </Link>{" "}
+                  first.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                    Clips per day
+                  </label>
+                  <select
+                    value={prefs.clipsPerDay}
+                    onChange={(e) =>
+                      setPrefs({ ...prefs, clipsPerDay: parseInt(e.target.value, 10) })
+                    }
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm"
+                  >
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <option key={n} value={n}>
+                        {n} clip{n === 1 ? "" : "s"} per day
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                    Audience timezone
+                  </label>
+                  <select
+                    value={prefs.timezone || ""}
+                    onChange={(e) => setPrefs({ ...prefs, timezone: e.target.value })}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm"
+                  >
+                    {prefs.timezone &&
+                      !TIMEZONES.includes(prefs.timezone) && (
+                        <option value={prefs.timezone}>
+                          {prefs.timezone} (your timezone)
+                        </option>
+                      )}
+                    {TIMEZONES.map((tz) => (
+                      <option key={tz} value={tz}>
+                        {tz}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={prefs.skipWeekends}
+                    onChange={(e) =>
+                      setPrefs({ ...prefs, skipWeekends: e.target.checked })
+                    }
+                    className="accent-accent"
+                  />
+                  Skip weekends
+                </label>
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={prefs.withAiHashtags}
+                    onChange={(e) =>
+                      setPrefs({ ...prefs, withAiHashtags: e.target.checked })
+                    }
+                    className="accent-accent"
+                  />
+                  AI-generated hashtags per platform
+                </label>
+              </div>
+
+              {prefsError && (
+                <p className="text-xs text-error">{prefsError}</p>
+              )}
+
+              <div className="flex items-center gap-3">
+                <Button size="sm" onClick={savePrefs} disabled={prefsSaving}>
+                  {prefsSaving ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                      Saving…
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3.5 h-3.5 mr-1.5" />
+                      Save preferences
+                    </>
+                  )}
+                </Button>
+                {prefsSavedAt && Date.now() - prefsSavedAt < 4000 && (
+                  <span className="inline-flex items-center gap-1 text-xs text-success">
+                    <Check className="w-3 h-3" />
+                    Saved
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
 
       <div className="space-y-3">
         <h2 className="text-sm font-medium text-muted-foreground">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
@@ -226,6 +226,28 @@ function AutoDistributePanel({
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ scheduled: number; firstAt: string; lastAt: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Pre-fill from saved publishing preferences (set on /dashboard/clips
+  // first screen). Falls back to defaults if user hasn't saved any.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/user/clipper-prefs")
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        if (Array.isArray(d.platforms) && d.platforms.length > 0) {
+          setSelectedPlatforms(new Set(d.platforms));
+        }
+        if (typeof d.clipsPerDay === "number") setClipsPerDay(d.clipsPerDay);
+        if (typeof d.skipWeekends === "boolean") setSkipWeekends(d.skipWeekends);
+        if (typeof d.withAiHashtags === "boolean") setWithAi(d.withAiHashtags);
+        if (typeof d.timezone === "string" && d.timezone) setTimezone(d.timezone);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const togglePlatform = (id: string) => {
     setSelectedPlatforms((prev) => {
