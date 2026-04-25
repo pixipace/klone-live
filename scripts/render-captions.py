@@ -25,16 +25,47 @@ import sys
 from PIL import Image, ImageDraw, ImageFont
 
 DEFAULT_FONT = "/Users/gill/Library/Fonts/Lato-Bold.ttf"
-FONT_SIZE = 72
-HIGHLIGHT_COLOR = (255, 220, 60, 255)  # bright yellow
-TEXT_COLOR = (255, 255, 255, 255)
-BOX_OPACITY = 0.6
-BOX_PAD_X = 24
-BOX_PAD_Y = 16
 WORD_GAP = 16  # px between words
 LINE_SPACING = 12
 MAX_LINES = 2
 MAX_WORDS_PER_FRAME = 4  # current + up to 3 surrounding for context
+
+# Three style presets — STYLE env var picks one
+STYLE = os.environ.get("CAPTION_STYLE", "classic").strip().lower()
+
+if STYLE == "bold":
+    # TikTok-style — bigger font, bright text always, no box, stroke for legibility
+    FONT_SIZE = 96
+    HIGHLIGHT_COLOR = (255, 220, 60, 255)
+    TEXT_COLOR = (255, 230, 100, 255)
+    USE_BOX = False
+    STROKE_WIDTH = 6
+    STROKE_COLOR = (0, 0, 0, 255)
+    BOX_OPACITY = 0.0
+    BOX_PAD_X = 0
+    BOX_PAD_Y = 0
+elif STYLE == "minimal":
+    # YouTube-essay-style — small white text, no box, current word slightly bigger
+    FONT_SIZE = 56
+    HIGHLIGHT_COLOR = (255, 255, 255, 255)
+    TEXT_COLOR = (200, 200, 200, 230)
+    USE_BOX = False
+    STROKE_WIDTH = 3
+    STROKE_COLOR = (0, 0, 0, 200)
+    BOX_OPACITY = 0.0
+    BOX_PAD_X = 0
+    BOX_PAD_Y = 0
+else:
+    # Classic — yellow word highlight, white siblings, black rounded box
+    FONT_SIZE = 72
+    HIGHLIGHT_COLOR = (255, 220, 60, 255)
+    TEXT_COLOR = (255, 255, 255, 255)
+    USE_BOX = True
+    STROKE_WIDTH = 0
+    STROKE_COLOR = (0, 0, 0, 0)
+    BOX_OPACITY = 0.6
+    BOX_PAD_X = 24
+    BOX_PAD_Y = 16
 
 
 def load_font(size: int = FONT_SIZE):
@@ -130,11 +161,12 @@ def render_frame(
     box_y = int(target_h * 0.72)
     box_x = (target_w - box_w) // 2
 
-    draw.rounded_rectangle(
-        [(box_x, box_y), (box_x + box_w, box_y + box_h)],
-        radius=20,
-        fill=(0, 0, 0, int(255 * BOX_OPACITY)),
-    )
+    if USE_BOX:
+        draw.rounded_rectangle(
+            [(box_x, box_y), (box_x + box_w, box_y + box_h)],
+            radius=20,
+            fill=(0, 0, 0, int(255 * BOX_OPACITY)),
+        )
 
     y = box_y + BOX_PAD_Y
     for li, line in enumerate(lines[: len(line_heights)]):
@@ -143,7 +175,19 @@ def render_frame(
         for word_i in line:
             color = HIGHLIGHT_COLOR if word_i == highlight_idx else TEXT_COLOR
             offset_y = -font.getbbox(texts[word_i])[1]
-            draw.text((x, y + offset_y), texts[word_i], font=font, fill=color)
+            if STROKE_WIDTH > 0:
+                # Black stroke around text — needed for box-less styles
+                # so text stays legible over any background.
+                draw.text(
+                    (x, y + offset_y),
+                    texts[word_i],
+                    font=font,
+                    fill=color,
+                    stroke_width=STROKE_WIDTH,
+                    stroke_fill=STROKE_COLOR,
+                )
+            else:
+                draw.text((x, y + offset_y), texts[word_i], font=font, fill=color)
             x += word_widths[word_i] + WORD_GAP
         y += line_heights[li] + LINE_SPACING
 

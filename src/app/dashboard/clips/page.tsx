@@ -47,7 +47,15 @@ type PublishPrefs = {
   skipWeekends: boolean;
   withAiHashtags: boolean;
   timezone: string | null;
+  captionStyle: "classic" | "bold" | "minimal";
+  endCardText: string;
 };
+
+const CAPTION_STYLES = [
+  { id: "classic", label: "Classic", desc: "Yellow word highlight, black box (Opus-style)" },
+  { id: "bold", label: "Bold", desc: "Big yellow text with stroke (TikTok-style)" },
+  { id: "minimal", label: "Minimal", desc: "Small white text, no box (essay-style)" },
+] as const;
 
 type ClipJob = {
   id: string;
@@ -129,6 +137,10 @@ export default function ClipsPage() {
             (typeof window !== "undefined"
               ? Intl.DateTimeFormat().resolvedOptions().timeZone
               : null),
+          captionStyle: (data.captionStyle === "bold" || data.captionStyle === "minimal"
+            ? data.captionStyle
+            : "classic") as "classic" | "bold" | "minimal",
+          endCardText: typeof data.endCardText === "string" ? data.endCardText : "",
         });
       }
     } catch {
@@ -521,6 +533,59 @@ export default function ClipsPage() {
                   />
                   AI-generated hashtags per platform
                 </label>
+              </div>
+
+              <div className="border-t border-border/40 pt-4 mt-2">
+                <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                  Caption style
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {CAPTION_STYLES.map((s) => {
+                    const active = prefs.captionStyle === s.id;
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() =>
+                          setPrefs({ ...prefs, captionStyle: s.id })
+                        }
+                        className={`text-left p-3 rounded-lg border text-xs transition-all ${
+                          active
+                            ? "border-accent bg-accent/10"
+                            : "border-border bg-card hover:border-border-hover"
+                        }`}
+                      >
+                        <div className="font-medium mb-0.5">{s.label}</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {s.desc}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                  End card text{" "}
+                  <span className="text-muted font-normal">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={prefs.endCardText}
+                  onChange={(e) =>
+                    setPrefs({
+                      ...prefs,
+                      endCardText: e.target.value.slice(0, 60),
+                    })
+                  }
+                  placeholder="@yourhandle"
+                  maxLength={60}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+                />
+                <p className="text-[10px] text-muted mt-1">
+                  Shown over the last 1.5 seconds of every clip with{" "}
+                  &ldquo;more like this&rdquo; below it. Leave empty to skip.
+                </p>
               </div>
 
               {prefsError && (

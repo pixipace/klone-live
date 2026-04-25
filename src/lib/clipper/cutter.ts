@@ -56,6 +56,11 @@ export type EditOptions = {
     startSec: number;
     endSec: number;
   }>;
+  /** Optional end card PNG shown over the last 1.5s of the clip (full-frame
+   * transparent with the user's branded card rendered bottom). */
+  endCardPath?: string;
+  /** Caption style key — passed through to the renderer. Default "classic". */
+  captionStyle?: "classic" | "bold" | "minimal";
 };
 
 export type CutResult = {
@@ -180,6 +185,7 @@ export async function cutVerticalClip(
 
   let musicInputIdx: number | null = null;
   let captionsInputIdx: number | null = null;
+  let endCardInputIdx: number | null = null;
   const sfxInputs: Array<{ idx: number; sfx: SfxAtTime }> = [];
   const brollInputs: Array<{
     idx: number;
@@ -196,6 +202,13 @@ export async function cutVerticalClip(
       hookPngPath
     );
     hookInputIdx = nextInputIdx++;
+  }
+  if (options.endCardPath) {
+    // End card spans full clip duration (overlay enable= time-gates it
+    // to the last 1.5s). Using full duration keeps the input alive
+    // through the fade window.
+    args.push("-loop", "1", "-t", duration.toFixed(2), "-i", options.endCardPath);
+    endCardInputIdx = nextInputIdx++;
   }
   if (options.captions) {
     args.push(
@@ -235,6 +248,7 @@ export async function cutVerticalClip(
   const useFilterComplex =
     hookInputIdx !== null ||
     captionsInputIdx !== null ||
+    endCardInputIdx !== null ||
     brollInputs.length > 0 ||
     musicInputIdx !== null ||
     sfxInputs.length > 0;
@@ -280,11 +294,29 @@ export async function cutVerticalClip(
       parts.push(
         `[${hookInputIdx}:v]format=rgba,fade=t=in:st=0:d=0.4:alpha=1,fade=t=out:st=${fadeOutStart}:d=0.4:alpha=1[hookFaded]`
       );
+      const hookOutLabel = endCardInputIdx !== null ? "vHook" : "v";
       parts.push(
-        `[${lastVideoLabel}][hookFaded]overlay=x=0:y=H*0.08:enable='lt(t,${dur.toFixed(2)})'[v]`
+        `[${lastVideoLabel}][hookFaded]overlay=x=0:y=H*0.08:enable='lt(t,${dur.toFixed(2)})'[${hookOutLabel}]`
       );
+      lastVideoLabel = hookOutLabel;
+    } else if (endCardInputIdx !== null) {
+      parts.push(`[${lastVideoLabel}]null[vHook]`);
+      lastVideoLabel = "vHook";
     } else {
       parts.push(`[${lastVideoLabel}]null[v]`);
+      lastVideoLabel = "v";
+    }
+
+    // End card: shows over the last 1.5s of the clip with a 0.4s fade-in.
+    if (endCardInputIdx !== null) {
+      const endCardDur = 1.5;
+      const endCardStart = Math.max(0, duration - endCardDur);
+      parts.push(
+        `[${endCardInputIdx}:v]format=rgba,fade=t=in:st=${endCardStart.toFixed(3)}:d=0.4:alpha=1[endCardFaded]`
+      );
+      parts.push(
+        `[${lastVideoLabel}][endCardFaded]overlay=x=0:y=0:enable='gte(t,${endCardStart.toFixed(3)})'[v]`
+      );
     }
 
     const audioInChain = afChain.length > 0 ? afChain.join(",") : "anull";

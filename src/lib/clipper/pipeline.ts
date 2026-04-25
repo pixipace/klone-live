@@ -1,4 +1,5 @@
-import { rm } from "fs/promises";
+import { rm, mkdir } from "fs/promises";
+import { spawn } from "child_process";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 import { CLIPPER_DIRS } from "./types";
@@ -16,8 +17,32 @@ import { pickMood, pickEmphasisMoments } from "@/lib/ai";
 
 const CLIP_OUTPUT_ROOT = path.join(process.cwd(), ".uploads", "clips");
 
+function renderEndCard(text: string, outPng: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      process.env.PYTHON_BIN || "/opt/homebrew/bin/python3",
+      [path.join(process.cwd(), "scripts", "render-endcard.py"), text, outPng]
+    );
+    let stderr = "";
+    child.stderr.on("data", (d) => (stderr += d.toString()));
+    child.on("close", (code) =>
+      code === 0
+        ? resolve()
+        : reject(new Error(`render-endcard exited ${code}: ${stderr.slice(-200)}`))
+    );
+    child.on("error", reject);
+  });
+}
+
 export async function runPipeline(jobId: string): Promise<void> {
-  const job = await prisma.clipJob.findUnique({ where: { id: jobId } });
+  const job = await prisma.clipJob.findUnique({
+    where: { id: jobId },
+    include: {
+      user: {
+        select: { clipperCaptionStyle: true, clipperEndCardText: true },
+      },
+    },
+  });
   if (!job) throw new Error(`Job ${jobId} not found`);
 
   await prisma.clipJob.update({
@@ -93,6 +118,25 @@ export async function runPipeline(jobId: string): Promise<void> {
     const brollEnabled = job.optBroll === true;
     const translateCaptions = job.optTranslateCaptions === true;
     const guidance = job.pickerGuidance ?? undefined;
+    const captionStyle = (job.user.clipperCaptionStyle === "bold" ||
+      job.user.clipperCaptionStyle === "minimal"
+      ? job.user.clipperCaptionStyle
+      : "classic") as "classic" | "bold" | "minimal";
+    const endCardText = job.user.clipperEndCardText?.trim() ?? "";
+
+    // Pre-render end card once per job (same PNG reused for every clip)
+    let endCardPath: string | undefined;
+    if (endCardText.length > 0) {
+      try {
+        const endCardDir = path.join(workDir, "endcard");
+        await mkdir(endCardDir, { recursive: true });
+        endCardPath = path.join(endCardDir, "endcard.png");
+        await renderEndCard(endCardText, endCardPath);
+      } catch (err) {
+        console.warn(`[clipper] endcard render failed for ${jobId}:`, err);
+        endCardPath = undefined;
+      }
+    }
     if (
       !captionsEnabled ||
       !musicEnabled ||
@@ -370,7 +414,10 @@ export async function runPipeline(jobId: string): Promise<void> {
                 words,
                 outputDur,
                 capsDir,
-                8
+                8,
+                1080,
+                1920,
+                captionStyle
               );
               captions = {
                 framePattern: rendered.framePattern,
@@ -402,6 +449,8 @@ export async function runPipeline(jobId: string): Promise<void> {
                   endSec: b.endSec,
                 }))
               : undefined,
+          endCardPath,
+          captionStyle,
         };
 
         const out = await cutVerticalClip(

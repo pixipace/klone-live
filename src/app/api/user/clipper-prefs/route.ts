@@ -19,6 +19,8 @@ export async function GET() {
       clipperSkipWeekends: true,
       clipperWithAiHashtags: true,
       clipperTimezone: true,
+      clipperCaptionStyle: true,
+      clipperEndCardText: true,
     },
   });
   if (!user) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -32,6 +34,8 @@ export async function GET() {
     skipWeekends: user.clipperSkipWeekends,
     withAiHashtags: user.clipperWithAiHashtags,
     timezone: user.clipperTimezone,
+    captionStyle: user.clipperCaptionStyle || "classic",
+    endCardText: user.clipperEndCardText || "",
   });
 }
 
@@ -47,6 +51,8 @@ export async function PATCH(request: NextRequest) {
     skipWeekends?: boolean;
     withAiHashtags?: boolean;
     timezone?: string | null;
+    captionStyle?: string;
+    endCardText?: string | null;
   };
 
   const data: {
@@ -56,6 +62,8 @@ export async function PATCH(request: NextRequest) {
     clipperSkipWeekends?: boolean;
     clipperWithAiHashtags?: boolean;
     clipperTimezone?: string | null;
+    clipperCaptionStyle?: string;
+    clipperEndCardText?: string | null;
   } = {};
 
   if (typeof body.autoPublish === "boolean") {
@@ -78,6 +86,16 @@ export async function PATCH(request: NextRequest) {
   }
   if (body.timezone === null || typeof body.timezone === "string") {
     data.clipperTimezone = body.timezone;
+  }
+  if (typeof body.captionStyle === "string") {
+    const style = body.captionStyle.toLowerCase();
+    if (style === "classic" || style === "bold" || style === "minimal") {
+      data.clipperCaptionStyle = style;
+    }
+  }
+  if (body.endCardText === null || typeof body.endCardText === "string") {
+    const t = body.endCardText?.trim() ?? "";
+    data.clipperEndCardText = t.length > 0 ? t.slice(0, 60) : null;
   }
 
   // Guard: if user enabled auto-publish, they must have at least one platform

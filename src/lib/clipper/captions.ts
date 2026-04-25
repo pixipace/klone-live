@@ -47,7 +47,8 @@ export async function renderCaptionFrames(
   outDir: string,
   fps: number = 8,
   targetWidth: number = 1080,
-  targetHeight: number = 1920
+  targetHeight: number = 1920,
+  style: "classic" | "bold" | "minimal" = "classic"
 ): Promise<RenderResult> {
   const framesDir = path.join(outDir, "caps");
   const cleanWords = dedupeConsecutive(words);
@@ -61,7 +62,9 @@ export async function renderCaptionFrames(
   });
 
   return new Promise((resolve, reject) => {
-    const child = spawn("python3", [SCRIPT_PATH]);
+    const child = spawn("python3", [SCRIPT_PATH], {
+      env: { ...process.env, CAPTION_STYLE: style },
+    });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (d) => (stdout += d.toString()));

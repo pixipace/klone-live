@@ -30,6 +30,12 @@ model User {
   clipperSkipWeekends    Boolean @default(true)
   clipperWithAiHashtags  Boolean @default(true)
   clipperTimezone        String?
+  /** Caption style: "classic" (yellow word highlight + black box, default),
+    * "bold" (large yellow text, no box), "minimal" (small white text). */
+  clipperCaptionStyle    String  @default("classic")
+  /** Optional handle/text shown as branded end card on last ~1.5s of each
+    * clip (e.g. "@gillpixipace"). Empty/null disables the end card. */
+  clipperEndCardText     String?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   socialAccounts      SocialAccount[]
