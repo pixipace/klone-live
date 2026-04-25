@@ -266,6 +266,16 @@ export default function ClipsPage() {
     fetchJobs();
   };
 
+  const retry = async (id: string) => {
+    const res = await fetch(`/api/clips/${id}/retry`, { method: "POST" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "Retry failed");
+      return;
+    }
+    fetchJobs();
+  };
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       <div>
@@ -778,6 +788,11 @@ export default function ClipsPage() {
                       <Link href={`/dashboard/clips/${job.id}`}>
                         <Button size="sm">View clips</Button>
                       </Link>
+                    )}
+                    {job.status === "FAILED" && (
+                      <Button size="sm" variant="outline" onClick={() => retry(job.id)}>
+                        Retry
+                      </Button>
                     )}
                     <button
                       onClick={() => remove(job.id)}

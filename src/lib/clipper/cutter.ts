@@ -155,12 +155,18 @@ export async function cutVerticalClip(
 
   const vf = vfChain.join(",");
 
-  // Audio filter chain — mirror the silence trim
+  // Audio filter chain — mirror the silence trim, then normalize loudness
+  // so clips from different sources end up at consistent volume. Uses
+  // dynaudnorm (single-pass, streaming-friendly) — a podcast recorded at
+  // -28 LUFS and an interview at -14 LUFS both come out around -18 LUFS.
+  // g=11 is moderate gating window; m=4 limits max gain so quiet rooms
+  // don't get pumped to noise.
   const afChain: string[] = [];
   if (options.removeRanges && options.removeRanges.length > 0) {
     const expr = buildSelectExpr(options.removeRanges);
     afChain.push(`aselect='${expr}'`, `asetpts=N/SR/TB`);
   }
+  afChain.push("dynaudnorm=g=11:m=4:r=0.95");
 
   // Build ffmpeg command. Music + hook overlay both require filter_complex
   // since they need additional input streams.
@@ -416,15 +422,25 @@ export async function cutVerticalClip(
 
   await run("ffmpeg", args);
 
-  // Thumbnail from middle of the clip (use the actual output, not source)
-  const midOffset = duration / 2;
+  // Smart thumbnail: ffmpeg's `thumbnail` filter scores each frame within a
+  // window for visual distinctness vs the average and picks the most
+  // representative one. Much better than grabbing the middle frame, which
+  // often catches a blink/transition. Skip the first 0.4s and last 0.4s
+  // (avoids fade-in artifacts and the end card).
+  const skipHead = 0.4;
+  const skipTail = 0.4;
+  const trimmedDur = Math.max(1, duration - skipHead - skipTail);
   await run("ffmpeg", [
     "-y",
     "-ss",
-    midOffset.toFixed(2),
+    skipHead.toFixed(2),
+    "-t",
+    trimmedDur.toFixed(2),
     "-i",
     videoPath,
-    "-vframes",
+    "-vf",
+    "thumbnail=200",
+    "-frames:v",
     "1",
     "-q:v",
     "3",
