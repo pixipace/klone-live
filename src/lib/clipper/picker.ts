@@ -16,12 +16,7 @@ A great clip:
 
 Banned: clips that are introductions ("welcome to the show"), goodbyes, generic banter, or clips that require setup the viewer doesn't have.
 
-QUALITY OVER QUANTITY — THIS IS THE MOST IMPORTANT RULE:
-- Variable count is fine: zero clips, one clip, or many. There is NO target number.
-- Some sources contain ONE genuinely viral moment. That's the right answer — return one clip.
-- Some sources contain none. That's also the right answer — return an empty clips array.
-- Never invent or stretch picks to fill a quota. A mediocre clip hurts the user more than no clip.
-- Only return clips you'd genuinely score 7+/10 for viral potential.
+Pick variable count — could be 3 clips from a 15-min interview, could be 8 from a 60-min one. Quality over quantity, but lean BOLD over safe — viral clips are usually contrarian, surprising, emotional, or controversial. A safe-sounding 8/10 is worth less than a polarizing 7/10 that makes people stop scrolling.
 
 For EACH clip, write THREE different hook titles using DIFFERENT angles:
 - hookTitles[0]: question or curiosity gap ("Why does ___?", "The truth about ___")
@@ -46,8 +41,7 @@ Rules:
 - startSec MUST be earlier than endSec
 - Each clip 20-90 seconds long
 - Clips MUST NOT overlap each other
-- viralityScore: 9-10 = standout, 7-8 = strong, anything below 7 = don't include
-- It is BETTER to return zero clips than to include a 5 or 6
+- viralityScore: 9-10 = standout, 7-8 = strong, 5-6 = decent, below 5 = don't include
 - hookTitles array MUST have exactly 3 different angles
 - Return only the JSON object. No preamble, no markdown fences.`;
 
@@ -153,8 +147,11 @@ Output the JSON.`;
     .sort((a, b) => a.startSec - b.startSec);
 }
 
-// JS-side quality floor (belt-and-suspenders to the prompt rule).
-const MIN_VIRALITY_SCORE = 7;
+// JS-side quality floor — generous (Gemma's prompt is the real gate).
+// Was 7 briefly; that filter dropped genuinely viral-but-risky picks
+// (contrarian takes Gemma rates conservatively). Back to 5 = "decent
+// or better" which lets the prompt's character drive the calls.
+const MIN_VIRALITY_SCORE = 5;
 // Pure quality cap — never return more than this even on huge sources.
 // Discards LOWEST-scoring picks first if exceeded.
 const MAX_CLIPS_PER_JOB = 15;
