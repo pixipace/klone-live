@@ -32,7 +32,12 @@ export async function postToYouTube({
       body: JSON.stringify({
         snippet: { title, description: caption, categoryId: "22" },
         status: {
-          privacyStatus: "private",
+          // We always request "public". Until the OAuth app is fully
+          // verified by Google, YouTube silently quarantines uploads from
+          // unverified apps as private (visible to the uploader, hidden
+          // from public). Once verification completes, the same request
+          // starts publishing publicly with no code change required.
+          privacyStatus: process.env.YOUTUBE_PRIVACY_OVERRIDE || "public",
           selfDeclaredMadeForKids: false,
         },
       }),
@@ -67,6 +72,7 @@ export async function postToYouTube({
     success: true,
     id: uploadData.id,
     url: `https://youtube.com/shorts/${uploadData.id}`,
-    message: "Video uploaded to YouTube as Short (private)",
+    message:
+      "Video uploaded to YouTube as Short (public — may show as private until OAuth verification completes)",
   };
 }
