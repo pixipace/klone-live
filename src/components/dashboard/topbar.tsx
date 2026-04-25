@@ -1,37 +1,57 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Command } from "lucide-react";
+import { Menu } from "lucide-react";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Overview",
-  "/dashboard/create": "Create Post",
-  "/dashboard/posts": "Posts",
-  "/dashboard/accounts": "Accounts",
-  "/dashboard/insights": "Insights",
+  "/dashboard/create": "New post",
+  "/dashboard/clips": "Clip Studio",
+  "/dashboard/posts": "My posts",
+  "/dashboard/accounts": "Connected apps",
+  "/dashboard/insights": "Stats",
   "/dashboard/comments": "Comments",
   "/dashboard/settings": "Settings",
 };
 
-export function Topbar() {
+interface TopbarProps {
+  onMenuClick?: () => void;
+}
+
+export function Topbar({ onMenuClick }: TopbarProps) {
   const pathname = usePathname();
-  const title = pageTitles[pathname] || "Dashboard";
+  // Find best match (longest prefix wins)
+  const title =
+    Object.keys(pageTitles)
+      .sort((a, b) => b.length - a.length)
+      .find((p) => pathname === p || pathname.startsWith(p + "/"))
+      ?.split("/")
+      .pop() || "Dashboard";
+  const titleLabel = pageTitles[`/dashboard/${title}`] || pageTitles["/dashboard"] || "Dashboard";
 
   return (
-    <header className="h-14 flex items-center justify-between px-6 border-b border-border/40">
-      <h1 className="text-sm font-medium text-muted-foreground">{title}</h1>
+    <header className="h-14 sticky top-0 z-30 flex items-center justify-between px-4 md:px-6 border-b border-border/40 bg-background/80 backdrop-blur-md">
       <div className="flex items-center gap-3">
-        <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-card/50 border border-border/50 text-xs text-muted hover:text-muted-foreground hover:border-border transition-colors">
-          <Command className="w-3 h-3" />
-          <span>Search</span>
-          <kbd className="text-[10px] bg-background/50 px-1.5 py-0.5 rounded font-mono text-muted">
-            /
-          </kbd>
+        {/* Hamburger — mobile only */}
+        <button
+          onClick={onMenuClick}
+          className="md:hidden p-2 -ml-2 text-foreground hover:text-accent transition-colors"
+          aria-label="Open menu"
+        >
+          <Menu className="w-5 h-5" />
         </button>
-        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-accent to-accent/60 flex items-center justify-center text-white text-[11px] font-semibold">
-          K
-        </div>
+        <h1 className="text-sm font-medium text-muted-foreground">
+          {titleLabel}
+        </h1>
       </div>
+      <Link
+        href="/dashboard/settings"
+        className="w-8 h-8 rounded-full bg-gradient-to-br from-accent to-accent/60 flex items-center justify-center text-white text-xs font-semibold hover:opacity-80 transition-opacity"
+        aria-label="Settings"
+      >
+        K
+      </Link>
     </header>
   );
 }
