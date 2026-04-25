@@ -208,14 +208,16 @@ export async function cutVerticalClip(
   }
   if (options.brollOverlays) {
     for (const ov of options.brollOverlays) {
-      // No -t: input loops infinitely so frames exist at any output time.
-      // FFmpeg only consumes frames the overlay actually pulls (gated by
-      // enable=between(t,start,end) in the filter chain). Output stream
-      // length is bounded by the main video, not these inputs.
-      // PREVIOUSLY: -t was set to (endSec - startSec) = e.g. 3s, but the
-      // fade timestamp was (output) startSec = e.g. 4.5s, so by the time
-      // the fade should fire the input's frames had ended → no overlay.
-      args.push("-loop", "1", "-i", ov.framePath);
+      // -t must be >= overlay.endSec so input frames exist at the moment
+      // the overlay needs to display them (overlay pulls frames at the
+      // OUTPUT timestamp via default sync). Pad +0.5s for safety.
+      // PREVIOUS BUGS:
+      //   v1 (-t (endSec - startSec)): too short — fade fired at output
+      //   t=startSec but input had ended at input t=(endSec-startSec).
+      //   v2 (-loop 1, no -t): infinite input → encoder ran forever,
+      //   produced multi-GB files past the main video's end.
+      const tCap = (ov.endSec + 0.5).toFixed(2);
+      args.push("-loop", "1", "-t", tCap, "-i", ov.framePath);
       brollInputs.push({ idx: nextInputIdx++, overlay: ov });
     }
   }
@@ -372,6 +374,11 @@ export async function cutVerticalClip(
     "128k",
     "-movflags",
     "+faststart",
+    // Hard cap output to source-slice duration. Belt-and-suspenders against
+    // any future filter-graph misconfiguration that could let an infinite
+    // input run the encoder past the intended end.
+    "-t",
+    duration.toFixed(2),
     videoPath
   );
 
