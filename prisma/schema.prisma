@@ -20,6 +20,8 @@ model User {
   maxClipsPerMonth    Int?
   notes               String?
   notifyOnPost        Boolean              @default(true)
+  weeklyDigestEnabled Boolean              @default(true)
+  lastDigestSentAt    DateTime?
   audienceTimezone    String?
   /** Saved publishing prefs — applied when user manually distributes a job
     * (panel pre-fills) AND when clipperAutoPublish is true (auto-trigger
