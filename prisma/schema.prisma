@@ -145,6 +145,10 @@ model Post {
   platforms    String
   status       String    @default("DRAFT")
   results      String?
+  /** Per-platform engagement metrics JSON, refreshed on demand from each
+    * platform's insights API. Shape: {<platform>: {views, likes, comments, ...}}. */
+  metrics          String?
+  metricsUpdatedAt DateTime?
   scheduledFor DateTime?
   postedAt     DateTime?
   createdAt    DateTime  @default(now())

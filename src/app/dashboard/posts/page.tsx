@@ -9,6 +9,9 @@ import { redirect } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { RetryButton } from "./retry-button";
 import { CancelScheduledButton } from "./cancel-scheduled-button";
+import { MetricsRow } from "./metrics-row";
+
+const FETCHABLE_PLATFORMS = new Set(["youtube", "instagram"]);
 
 export const dynamic = "force-dynamic";
 
@@ -239,6 +242,27 @@ export default async function PostsPage({
                       }
                       return null;
                     })()}
+                    {(post.status === "POSTED" || post.status === "PARTIAL") && (
+                      <MetricsRow
+                        postId={post.id}
+                        metrics={(() => {
+                          if (!post.metrics) return {};
+                          try {
+                            return JSON.parse(post.metrics);
+                          } catch {
+                            return {};
+                          }
+                        })()}
+                        metricsUpdatedAt={
+                          post.metricsUpdatedAt
+                            ? post.metricsUpdatedAt.toISOString()
+                            : null
+                        }
+                        hasFetchablePlatforms={platforms.some((p) =>
+                          FETCHABLE_PLATFORMS.has(p)
+                        )}
+                      />
+                    )}
                   </div>
                 </div>
               </Card>
