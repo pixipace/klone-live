@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
       email: user.email,
       plan: user.plan,
       credits: user.credits,
+      role: user.role,
     });
 
     return NextResponse.json({ success: true, user: { id: user.id, name: user.name, email: user.email } });

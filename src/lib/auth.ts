@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { prisma } from "@/lib/prisma";
 
 const secretValue = process.env.NEXTAUTH_SECRET;
 if (!secretValue || secretValue.length < 32) {
@@ -15,6 +16,22 @@ export interface SessionUser {
   email: string;
   plan: string;
   credits: number;
+  role?: string;
+}
+
+/**
+ * Authoritative admin check — reads role + banned status from DB on every
+ * call so role changes / bans take effect without requiring re-login.
+ */
+export async function requireAdmin(): Promise<SessionUser | null> {
+  const session = await getSession();
+  if (!session) return null;
+  const user = await prisma.user.findUnique({
+    where: { id: session.id },
+    select: { role: true, banned: true },
+  });
+  if (!user || user.banned || user.role !== "ADMIN") return null;
+  return session;
 }
 
 export async function createSession(user: SessionUser) {
