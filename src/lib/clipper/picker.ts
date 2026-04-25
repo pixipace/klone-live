@@ -59,11 +59,16 @@ function formatSegments(segments: WhisperSegment[]): string {
 
 export async function pickClips(
   segments: WhisperSegment[],
-  sourceTitle: string
+  sourceTitle: string,
+  guidance?: string
 ): Promise<ClipPick[]> {
   const transcript = formatSegments(segments);
 
-  const userPrompt = `Source: "${sourceTitle}"
+  const guidanceBlock = guidance && guidance.trim().length > 0
+    ? `\n\nUSER'S GUIDANCE (treat as additional rules — they know their content best):\n${guidance.trim().slice(0, 500)}\n`
+    : "";
+
+  const userPrompt = `Source: "${sourceTitle}"${guidanceBlock}
 
 Transcript:
 ${transcript}
@@ -179,14 +184,15 @@ const DEDUPE_OVERLAP_THRESHOLD = 0.5;
 export async function pickClipsChunked(
   segments: WhisperSegment[],
   sourceTitle: string,
-  onChunkProgress?: (chunkIdx: number, totalChunks: number) => void
+  onChunkProgress?: (chunkIdx: number, totalChunks: number) => void,
+  guidance?: string
 ): Promise<ClipPick[]> {
   if (segments.length === 0) return [];
   const sourceDur = segments[segments.length - 1].end;
 
   if (sourceDur <= WINDOW_DURATION_SEC) {
     onChunkProgress?.(0, 1);
-    return pickClips(segments, sourceTitle);
+    return pickClips(segments, sourceTitle, guidance);
   }
 
   const windows = buildWindows(sourceDur);
@@ -203,7 +209,7 @@ export async function pickClipsChunked(
     if (windowSegments.length === 0) continue;
 
     try {
-      const picks = await pickClips(windowSegments, sourceTitle);
+      const picks = await pickClips(windowSegments, sourceTitle, guidance);
       console.log(
         `[picker] chunk ${i + 1}/${windows.length} (${(w.start / 60).toFixed(1)}-${(w.end / 60).toFixed(1)}min): ${picks.length} pick(s)`
       );

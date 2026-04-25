@@ -95,6 +95,8 @@ export default function ClipsPage() {
   const [optMusic, setOptMusic] = useState(true);
   const [optPunch, setOptPunch] = useState(true);
   const [optBroll, setOptBroll] = useState(false);
+  const [optTranslate, setOptTranslate] = useState(false);
+  const [guidance, setGuidance] = useState("");
   const [prefs, setPrefs] = useState<PublishPrefs | null>(null);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [prefsSaving, setPrefsSaving] = useState(false);
@@ -176,6 +178,8 @@ export default function ClipsPage() {
           music: optMusic,
           punchZooms: optPunch,
           broll: optBroll,
+          translateCaptions: optTranslate,
+          guidance: guidance.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -277,6 +281,32 @@ export default function ClipsPage() {
             B-roll corner overlay
             <span className="text-[10px] text-muted">(beta · +1-2min)</span>
           </label>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={optTranslate}
+              onChange={(e) => setOptTranslate(e.target.checked)}
+              className="accent-accent"
+            />
+            English captions
+            <span className="text-[10px] text-muted">(works on Hindi/Punjabi/etc)</span>
+          </label>
+        </div>
+        <div className="mt-3">
+          <label className="text-[11px] font-medium text-muted-foreground block mb-1.5">
+            Custom AI guidance{" "}
+            <span className="text-muted font-normal">(optional)</span>
+          </label>
+          <textarea
+            value={guidance}
+            onChange={(e) => setGuidance(e.target.value.slice(0, 500))}
+            placeholder='e.g. "focus on storytelling moments", "skip self-promo", "find tactical advice clips only"'
+            rows={2}
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-accent/40 resize-none"
+          />
+          <p className="text-[10px] text-muted mt-1">
+            Steers the AI picker for THIS job. {500 - guidance.length} chars left.
+          </p>
         </div>
         <p className="text-[11px] text-muted-foreground mt-3">
           Max 3 hr source. Short videos (≤30 min) finish in ~5-10 min. Long

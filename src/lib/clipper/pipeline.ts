@@ -57,16 +57,19 @@ export async function runPipeline(jobId: string): Promise<void> {
     // Use cached transcript if present (re-pick scenario) to skip the slow
     // 4-min whisper segment pass. yt-dlp re-download is unavoidable since
     // we delete source videos after each run to save disk.
+    // Translation flag affects the source transcript (so Gemma sees English
+    // even if speaker is in Hindi/etc) AND per-clip caption transcripts.
+    const wantTranslate = job.optTranslateCaptions === true;
     let transcript: Awaited<ReturnType<typeof transcribe>>;
     if (job.cachedTranscript) {
       try {
         transcript = JSON.parse(job.cachedTranscript);
         console.log(`[clipper] using cached transcript for ${jobId}`);
       } catch {
-        transcript = await transcribe(dl.audioPath);
+        transcript = await transcribe(dl.audioPath, { translate: wantTranslate });
       }
     } else {
-      transcript = await transcribe(dl.audioPath);
+      transcript = await transcribe(dl.audioPath, { translate: wantTranslate });
     }
 
     if (transcript.segments.length === 0) {
@@ -88,9 +91,18 @@ export async function runPipeline(jobId: string): Promise<void> {
     const musicEnabled = job.optMusic !== false;
     const punchZoomsEnabled = job.optPunchZooms !== false;
     const brollEnabled = job.optBroll === true;
-    if (!captionsEnabled || !musicEnabled || !punchZoomsEnabled || brollEnabled) {
+    const translateCaptions = job.optTranslateCaptions === true;
+    const guidance = job.pickerGuidance ?? undefined;
+    if (
+      !captionsEnabled ||
+      !musicEnabled ||
+      !punchZoomsEnabled ||
+      brollEnabled ||
+      translateCaptions ||
+      guidance
+    ) {
       console.log(
-        `[clipper] toggles for ${jobId}: captions=${captionsEnabled} music=${musicEnabled} punchZooms=${punchZoomsEnabled} broll=${brollEnabled}`
+        `[clipper] toggles for ${jobId}: captions=${captionsEnabled} music=${musicEnabled} punchZooms=${punchZoomsEnabled} broll=${brollEnabled} translate=${translateCaptions} guidance=${guidance ? `"${guidance.slice(0, 60)}…"` : "no"}`
       );
     }
 
@@ -122,7 +134,8 @@ export async function runPipeline(jobId: string): Promise<void> {
             ),
           },
         });
-      }
+      },
+      guidance
     );
 
     if (picks.length === 0) {
@@ -322,7 +335,8 @@ export async function runPipeline(jobId: string): Promise<void> {
               clip.startSec,
               clip.endSec,
               workDir,
-              `clip-${i + 1}`
+              `clip-${i + 1}`,
+              { translate: translateCaptions }
             );
             // whisper.cpp -sow -dtw gives phrase-level segments (high-accuracy
             // timing) not true single-word output. We split each segment into

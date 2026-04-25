@@ -66,6 +66,10 @@ model ClipJob {
   optMusic        Boolean   @default(true)
   optPunchZooms   Boolean   @default(true)
   optBroll        Boolean   @default(false)
+  optTranslateCaptions Boolean @default(false)
+  /** Optional free-text guidance from user — appended to the picker prompt
+    * so they can steer Gemma ("focus on storytelling", "skip self-promo"). */
+  pickerGuidance  String?
   /** Cached transcript JSON (segment-level) so re-pick can skip download
     * + transcribe. Stored only after the first successful pipeline run. */
   cachedTranscript String?

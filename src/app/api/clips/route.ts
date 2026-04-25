@@ -53,12 +53,16 @@ export async function POST(request: NextRequest) {
     music = true,
     punchZooms = true,
     broll = false,
+    translateCaptions = false,
+    guidance,
   } = body as {
     sourceUrl?: string;
     captions?: boolean;
     music?: boolean;
     punchZooms?: boolean;
     broll?: boolean;
+    translateCaptions?: boolean;
+    guidance?: string;
   };
 
   if (!sourceUrl || typeof sourceUrl !== "string") {
@@ -115,6 +119,10 @@ export async function POST(request: NextRequest) {
       optMusic: !!music,
       optPunchZooms: !!punchZooms,
       optBroll: !!broll,
+      optTranslateCaptions: !!translateCaptions,
+      pickerGuidance: typeof guidance === "string" && guidance.trim().length > 0
+        ? guidance.trim().slice(0, 500)
+        : null,
     },
   });
 

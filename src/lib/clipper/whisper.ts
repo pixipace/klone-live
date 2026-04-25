@@ -48,13 +48,16 @@ function run(cmd: string, args: string[]): Promise<{ code: number; stderr: strin
   });
 }
 
-export async function transcribe(audioPath: string): Promise<WhisperResult> {
-  return transcribeInner(audioPath, false);
+export async function transcribe(
+  audioPath: string,
+  opts: { translate?: boolean } = {}
+): Promise<WhisperResult> {
+  return transcribeInner(audioPath, false, opts.translate ?? false);
 }
 
 /** Re-transcribe with -ml 1 for word-level timestamps. Used by caption renderer. */
 export async function transcribeWords(audioPath: string): Promise<WhisperResult> {
-  return transcribeInner(audioPath, true);
+  return transcribeInner(audioPath, true, false);
 }
 
 /**
@@ -62,13 +65,18 @@ export async function transcribeWords(audioPath: string): Promise<WhisperResult>
  * word-level. Returned segment timestamps are CLIP-RELATIVE (0 = clip start).
  * Much faster than running -ml 1 on the whole source since the slice is
  * 20-90s vs 20-30 min.
+ *
+ * `translate`: when true, whisper-cli emits English text even if the
+ * source audio is in another language (Hindi, Punjabi, etc). Used so the
+ * burned-in captions are always English regardless of speaker language.
  */
 export async function transcribeClipWords(
   sourceAudio: string,
   clipStart: number,
   clipEnd: number,
   workDir: string,
-  basename: string
+  basename: string,
+  opts: { translate?: boolean } = {}
 ): Promise<WhisperResult> {
   const sliceWavPath = `${workDir}/${basename}.slice.wav`;
   const duration = clipEnd - clipStart;
@@ -102,12 +110,13 @@ export async function transcribeClipWords(
   });
 
   // Word-level transcribe the slice — already clip-relative
-  return transcribeInner(sliceWavPath, true);
+  return transcribeInner(sliceWavPath, true, opts.translate ?? false);
 }
 
 async function transcribeInner(
   audioPath: string,
-  wordLevel: boolean
+  wordLevel: boolean,
+  translate: boolean
 ): Promise<WhisperResult> {
   const outBase = audioPath.replace(/\.wav$/, wordLevel ? ".words" : "");
   const jsonPath = `${outBase}.json`;
@@ -129,6 +138,12 @@ async function transcribeInner(
     // -sow splits at word boundary; -dtw aligns per-token timestamps via
     // DTW (much more accurate than -ml 1's segment-boundary guesses).
     args.push("-sow", "-dtw", "large.v3.turbo");
+  }
+  if (translate) {
+    // -tr / --translate: emit English even when source audio is non-English
+    // (Hindi, Punjabi, Spanish, etc). Whisper handles 99 source languages
+    // but only TRANSLATES to English (Whisper limitation, not ours).
+    args.push("-tr");
   }
 
   const { code, stderr } = await run(WHISPER_BIN, args);

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ExternalLink, Flame, Clock, Send, Sparkles, Check, Pencil, Save, X, RotateCcw, Zap, Loader2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, Flame, Clock, Send, Sparkles, Check, Pencil, Save, X, RotateCcw, Zap, Loader2, RefreshCcw } from "lucide-react";
 
 export type ClipDetail = {
   id: string;
@@ -117,15 +117,17 @@ function HookPicker({
   jobId,
   clip,
   onUpdate,
+  onVariantsRefresh,
 }: {
   jobId: string;
   clip: ClipDetail;
   onUpdate: (newTitle: string) => void;
+  onVariantsRefresh: (newVariants: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-
-  if (clip.hookVariants.length <= 1) return null;
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenError, setRegenError] = useState<string | null>(null);
 
   const choose = async (title: string) => {
     if (title === clip.hookTitle) {
@@ -148,16 +150,53 @@ function HookPicker({
     }
   };
 
+  const regenerate = async () => {
+    setRegenerating(true);
+    setRegenError(null);
+    try {
+      const res = await fetch(
+        `/api/clips/${jobId}/clip/${clip.id}/regenerate-hook`,
+        { method: "POST" }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setRegenError(data.error || "Failed to regenerate");
+        return;
+      }
+      onVariantsRefresh(data.variants as string[]);
+      setOpen(true);
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  const hasVariants = clip.hookVariants.length > 1;
+
   return (
     <div>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="text-[11px] text-accent hover:text-accent/80 inline-flex items-center gap-1"
-      >
-        <Sparkles className="w-3 h-3" />
-        {open ? "Hide variants" : `Try ${clip.hookVariants.length - 1} other hook${clip.hookVariants.length > 2 ? "s" : ""}`}
-      </button>
-      {open && (
+      <div className="flex items-center gap-3">
+        {hasVariants && (
+          <button
+            onClick={() => setOpen((o) => !o)}
+            className="text-[11px] text-accent hover:text-accent/80 inline-flex items-center gap-1"
+          >
+            <Sparkles className="w-3 h-3" />
+            {open ? "Hide variants" : `Try ${clip.hookVariants.length - 1} other hook${clip.hookVariants.length > 2 ? "s" : ""}`}
+          </button>
+        )}
+        <button
+          onClick={regenerate}
+          disabled={regenerating}
+          className="text-[11px] text-muted-foreground hover:text-accent inline-flex items-center gap-1 disabled:opacity-60"
+        >
+          <RefreshCcw className={`w-3 h-3 ${regenerating ? "animate-spin" : ""}`} />
+          {regenerating ? "Generating…" : "Regenerate hooks"}
+        </button>
+      </div>
+      {regenError && (
+        <p className="text-[11px] text-error mt-1">{regenError}</p>
+      )}
+      {open && hasVariants && (
         <div className="mt-2 space-y-1.5">
           {clip.hookVariants.map((v, i) => {
             const isCurrent = v === clip.hookTitle;
@@ -478,6 +517,9 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
   const [titles, setTitles] = useState<Record<string, string>>(() =>
     Object.fromEntries(job.clips.map((c) => [c.id, c.hookTitle]))
   );
+  const [variants, setVariants] = useState<Record<string, string[]>>(() =>
+    Object.fromEntries(job.clips.map((c) => [c.id, c.hookVariants]))
+  );
   const [repicking, setRepicking] = useState(false);
   const [repickErr, setRepickErr] = useState<string | null>(null);
 
@@ -611,9 +653,16 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
               />
               <HookPicker
                 jobId={job.id}
-                clip={{ ...clip, hookTitle: titles[clip.id] ?? clip.hookTitle }}
+                clip={{
+                  ...clip,
+                  hookTitle: titles[clip.id] ?? clip.hookTitle,
+                  hookVariants: variants[clip.id] ?? clip.hookVariants,
+                }}
                 onUpdate={(newTitle) =>
                   setTitles((prev) => ({ ...prev, [clip.id]: newTitle }))
+                }
+                onVariantsRefresh={(newVariants) =>
+                  setVariants((prev) => ({ ...prev, [clip.id]: newVariants }))
                 }
               />
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
