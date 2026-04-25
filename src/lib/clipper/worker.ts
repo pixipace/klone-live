@@ -8,7 +8,10 @@ import { ALL_PLATFORMS, type PlatformId } from "@/lib/platforms";
 const PLATFORM_SET = new Set<string>(ALL_PLATFORMS);
 
 const POLL_INTERVAL_MS = 10_000;
-const STUCK_JOB_THRESHOLD_MS = 30 * 60 * 1000; // 30 min
+// Bumped from 30min → 3hr to support 2-3hr source videos. Whisper alone
+// can take 60-90 min on a 3hr source; full pipeline (including chunked
+// Gemma picker + per-clip ffmpeg cuts) can run 90-150 min.
+const STUCK_JOB_THRESHOLD_MS = 3 * 60 * 60 * 1000; // 3 hr
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // hourly
 const FAILED_RETENTION_DAYS = 14;
 

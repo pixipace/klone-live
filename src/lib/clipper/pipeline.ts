@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { CLIPPER_DIRS } from "./types";
 import { downloadYouTube } from "./youtube";
 import { transcribe, transcribeClipWords } from "./whisper";
-import { pickClips } from "./picker";
+import { pickClipsChunked } from "./picker";
 import { cutVerticalClip, type EditOptions } from "./cutter";
 import { renderCaptionFrames } from "./captions";
 import { pickMusicTrack } from "./music";
@@ -102,7 +102,28 @@ export async function runPipeline(jobId: string): Promise<void> {
         progress: 45,
       },
     });
-    const picks = await pickClips(transcript.segments, dl.title);
+    // Chunked picker: short sources (<= 30 min) call Gemma once; long
+    // sources are split into overlapping 30-min windows, each picked
+    // independently, then merged + dedupe + capped. Keeps Gemma's prompt
+    // small so quality stays high even on 3-hour sources.
+    const picks = await pickClipsChunked(
+      transcript.segments,
+      dl.title,
+      async (chunkIdx, totalChunks) => {
+        if (totalChunks <= 1) return;
+        const pickProgressBase = 45;
+        const pickProgressSpan = 10;
+        await prisma.clipJob.update({
+          where: { id: jobId },
+          data: {
+            stageDetail: `AI picking viral moments (window ${chunkIdx + 1}/${totalChunks})`,
+            progress: Math.round(
+              pickProgressBase + (pickProgressSpan * chunkIdx) / totalChunks
+            ),
+          },
+        });
+      }
+    );
 
     if (picks.length === 0) {
       throw new Error("No viable clips found in transcript");

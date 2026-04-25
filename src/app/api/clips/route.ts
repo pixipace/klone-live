@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth";
 import { probeYouTubeDuration } from "@/lib/clipper/youtube";
 
 const YT_RE = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be|m\.youtube\.com)\//i;
-const MAX_SOURCE_SEC = 30 * 60;
+const MAX_SOURCE_SEC = 3 * 60 * 60; // 3 hours
 
 export async function GET() {
   const session = await getSession();

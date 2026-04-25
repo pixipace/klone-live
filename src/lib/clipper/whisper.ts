@@ -10,8 +10,11 @@ const WHISPER_MODEL =
 
 const WHISPER_BIN = process.env.WHISPER_BIN || "whisper-cli";
 
+// Whisper hard timeout — scales with source length. Default ceiling is
+// 2hr (covers a 3hr source at ~0.5x realtime); hard floor is 15 min so
+// short clips don't get killed early. Override via WHISPER_TIMEOUT_MS env.
 const WHISPER_TIMEOUT_MS = parseInt(
-  process.env.WHISPER_TIMEOUT_MS ?? `${15 * 60 * 1000}`,
+  process.env.WHISPER_TIMEOUT_MS ?? `${120 * 60 * 1000}`,
   10
 );
 

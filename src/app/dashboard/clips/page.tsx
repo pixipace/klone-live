@@ -279,8 +279,10 @@ export default function ClipsPage() {
           </label>
         </div>
         <p className="text-[11px] text-muted-foreground mt-3">
-          Max 30 min source. Processing takes ~5-10 min with all features on.
-          Up to 2 jobs at once.
+          Max 3 hr source. Short videos (≤30 min) finish in ~5-10 min. Long
+          sources are split into 30-min windows so quality stays high — a
+          2-hour podcast typically takes 60-90 min end-to-end. Up to 2 jobs
+          at once.
         </p>
         {optBroll && (
           <p className="text-[11px] text-muted mt-1.5 leading-relaxed">

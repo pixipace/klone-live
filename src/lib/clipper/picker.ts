@@ -16,7 +16,12 @@ A great clip:
 
 Banned: clips that are introductions ("welcome to the show"), goodbyes, generic banter, or clips that require setup the viewer doesn't have.
 
-Pick variable count — could be 3 clips from a 15-min interview, could be 8 from a 60-min one. Quality over quantity.
+QUALITY OVER QUANTITY — THIS IS THE MOST IMPORTANT RULE:
+- Variable count is fine: zero clips, one clip, or many. There is NO target number.
+- Some sources contain ONE genuinely viral moment. That's the right answer — return one clip.
+- Some sources contain none. That's also the right answer — return an empty clips array.
+- Never invent or stretch picks to fill a quota. A mediocre clip hurts the user more than no clip.
+- Only return clips you'd genuinely score 7+/10 for viral potential.
 
 For EACH clip, write THREE different hook titles using DIFFERENT angles:
 - hookTitles[0]: question or curiosity gap ("Why does ___?", "The truth about ___")
@@ -41,7 +46,8 @@ Rules:
 - startSec MUST be earlier than endSec
 - Each clip 20-90 seconds long
 - Clips MUST NOT overlap each other
-- viralityScore: 9-10 = standout, 7-8 = strong, 5-6 = decent, below 5 = don't include
+- viralityScore: 9-10 = standout, 7-8 = strong, anything below 7 = don't include
+- It is BETTER to return zero clips than to include a 5 or 6
 - hookTitles array MUST have exactly 3 different angles
 - Return only the JSON object. No preamble, no markdown fences.`;
 
@@ -138,5 +144,113 @@ Output the JSON.`;
       };
     })
     .filter((c): c is ClipPick => c !== null)
+    .filter((c) => c.viralityScore >= MIN_VIRALITY_SCORE)
     .sort((a, b) => a.startSec - b.startSec);
+}
+
+// JS-side quality floor (belt-and-suspenders to the prompt rule).
+const MIN_VIRALITY_SCORE = 7;
+// Pure quality cap — never return more than this even on huge sources.
+// Discards LOWEST-scoring picks first if exceeded.
+const MAX_CLIPS_PER_JOB = 15;
+// Transcript window size in seconds — Gemma sees one window at a time
+// instead of being asked to reason over a 3-hour transcript at once.
+// Adjacent windows OVERLAP by WINDOW_OVERLAP_SEC so a clip that spans a
+// chunk boundary still gets picked from one of the windows.
+const WINDOW_DURATION_SEC = 30 * 60;
+const WINDOW_OVERLAP_SEC = 90;
+// Picks across windows that occupy >= this fraction of overlapping time
+// are treated as duplicates (keep the higher-scoring one).
+const DEDUPE_OVERLAP_THRESHOLD = 0.5;
+
+/**
+ * Chunked picker for long sources. Splits the transcript into overlapping
+ * 30-min windows, runs pickClips on each window sequentially (single-flight
+ * — Gemma is RAM-bound on this hardware), then merges the results:
+ *   1. Concatenate all picks across windows
+ *   2. Deduplicate clips that overlap in time (keep higher viralityScore)
+ *   3. Sort by virality, drop anything below MIN_VIRALITY_SCORE
+ *   4. Cap at MAX_CLIPS_PER_JOB
+ *   5. Re-sort by start time for downstream rendering
+ *
+ * For sources <= WINDOW_DURATION_SEC this just calls pickClips once with
+ * no overhead.
+ */
+export async function pickClipsChunked(
+  segments: WhisperSegment[],
+  sourceTitle: string,
+  onChunkProgress?: (chunkIdx: number, totalChunks: number) => void
+): Promise<ClipPick[]> {
+  if (segments.length === 0) return [];
+  const sourceDur = segments[segments.length - 1].end;
+
+  if (sourceDur <= WINDOW_DURATION_SEC) {
+    onChunkProgress?.(0, 1);
+    return pickClips(segments, sourceTitle);
+  }
+
+  const windows = buildWindows(sourceDur);
+  console.log(
+    `[picker] chunking ${(sourceDur / 60).toFixed(1)}min source into ${windows.length} ${WINDOW_DURATION_SEC / 60}-min windows`
+  );
+
+  const allPicks: ClipPick[] = [];
+  for (let i = 0; i < windows.length; i++) {
+    const w = windows[i];
+    onChunkProgress?.(i, windows.length);
+
+    const windowSegments = segments.filter((s) => s.end > w.start && s.start < w.end);
+    if (windowSegments.length === 0) continue;
+
+    try {
+      const picks = await pickClips(windowSegments, sourceTitle);
+      console.log(
+        `[picker] chunk ${i + 1}/${windows.length} (${(w.start / 60).toFixed(1)}-${(w.end / 60).toFixed(1)}min): ${picks.length} pick(s)`
+      );
+      allPicks.push(...picks);
+    } catch (err) {
+      console.warn(`[picker] chunk ${i + 1}/${windows.length} failed:`, err);
+      // Continue with remaining chunks — partial results > total failure.
+    }
+  }
+
+  return mergeAndDedupe(allPicks);
+}
+
+function buildWindows(sourceDur: number): Array<{ start: number; end: number }> {
+  const windows: Array<{ start: number; end: number }> = [];
+  let start = 0;
+  while (start < sourceDur) {
+    const end = Math.min(sourceDur, start + WINDOW_DURATION_SEC);
+    windows.push({ start, end });
+    if (end >= sourceDur) break;
+    start = end - WINDOW_OVERLAP_SEC;
+  }
+  return windows;
+}
+
+function mergeAndDedupe(picks: ClipPick[]): ClipPick[] {
+  if (picks.length === 0) return [];
+  // Sort by score desc — when we encounter overlapping picks, the
+  // first-seen (higher score) wins.
+  const sorted = [...picks].sort((a, b) => b.viralityScore - a.viralityScore);
+  const kept: ClipPick[] = [];
+  for (const p of sorted) {
+    const isDupe = kept.some((k) => clipsOverlap(p, k));
+    if (!isDupe) kept.push(p);
+  }
+  // Apply cap then re-sort by start time for the renderer.
+  return kept
+    .sort((a, b) => b.viralityScore - a.viralityScore)
+    .slice(0, MAX_CLIPS_PER_JOB)
+    .sort((a, b) => a.startSec - b.startSec);
+}
+
+function clipsOverlap(a: ClipPick, b: ClipPick): boolean {
+  const overlapStart = Math.max(a.startSec, b.startSec);
+  const overlapEnd = Math.min(a.endSec, b.endSec);
+  const overlap = Math.max(0, overlapEnd - overlapStart);
+  if (overlap === 0) return false;
+  const minDur = Math.min(a.endSec - a.startSec, b.endSec - b.startSec);
+  return overlap / minDur >= DEDUPE_OVERLAP_THRESHOLD;
 }
