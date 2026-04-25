@@ -292,13 +292,31 @@ export async function runPipeline(jobId: string): Promise<void> {
               workDir,
               `clip-${i + 1}`
             );
-            // Already clip-relative
+            // whisper.cpp -sow -dtw gives phrase-level segments (high-accuracy
+            // timing) not true single-word output. We split each segment into
+            // its constituent words and distribute the segment's duration
+            // across them by character length — preserves DTW timing while
+            // letting the caption renderer show a proper word-by-word effect.
             const words = clipWords.segments
-              .map((s) => ({
-                start: s.start,
-                end: s.end,
-                text: s.text.replace(/^\s+|\s+$/g, ""),
-              }))
+              .flatMap((s) => {
+                const trimmed = s.text.replace(/^\s+|\s+$/g, "");
+                const parts = trimmed.split(/\s+/).filter(Boolean);
+                if (parts.length <= 1) {
+                  return parts.length === 1
+                    ? [{ start: s.start, end: s.end, text: parts[0] }]
+                    : [];
+                }
+                const dur = Math.max(0, s.end - s.start);
+                const totalChars = parts.reduce((a, p) => a + p.length, 0) || 1;
+                let cursor = s.start;
+                return parts.map((p) => {
+                  const wDur = (p.length / totalChars) * dur;
+                  const wEnd = cursor + wDur;
+                  const out = { start: cursor, end: wEnd, text: p };
+                  cursor = wEnd;
+                  return out;
+                });
+              })
               .filter((w) => w.text.length > 0 && w.end > w.start);
             if (words.length > 0) {
               const capsDir = path.join(workDir, `caps-${clip.id}`);
