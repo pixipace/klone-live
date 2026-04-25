@@ -128,11 +128,19 @@ export default async function DashboardPage() {
     return "Good evening";
   })();
 
-  const isNewUser =
-    socialAccounts.length === 0 &&
-    postedThisWeek === 0 &&
-    clipsTotal === 0 &&
-    scheduledCount === 0;
+  // Progressive onboarding — show the checklist until all three are done.
+  // Each step transitions from pending → done as the user makes progress,
+  // so the banner morphs rather than disappearing on first action.
+  const onboarding = {
+    connectedAccount: socialAccounts.length > 0,
+    generatedClip: clipsTotal > 0,
+    publishedPost: postsLifetime > 0 || scheduledCount > 0,
+  };
+  const onboardingDone =
+    onboarding.connectedAccount &&
+    onboarding.generatedClip &&
+    onboarding.publishedPost;
+  const onboardingComplete = Object.values(onboarding).filter(Boolean).length;
 
   return (
     <div className="space-y-8 animate-fade-up">
@@ -159,19 +167,41 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      {isNewUser && (
+      {!onboardingDone && (
         <div className="relative overflow-hidden rounded-xl border border-accent/30 bg-gradient-to-br from-accent/10 via-card to-card p-6">
           <div className="absolute top-0 right-0 w-48 h-48 bg-accent/10 rounded-full blur-3xl -translate-y-12 translate-x-12 pointer-events-none" />
           <div className="relative">
-            <div className="flex items-center gap-2 mb-2">
-              <Sparkles className="w-4 h-4 text-accent" />
-              <span className="text-xs font-medium text-accent uppercase tracking-wider">
-                Welcome to Klone
-              </span>
+            <div className="flex items-center justify-between mb-2 gap-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-accent" />
+                <span className="text-xs font-medium text-accent uppercase tracking-wider">
+                  {onboardingComplete === 0
+                    ? "Welcome to Klone"
+                    : `Getting started · ${onboardingComplete}/3 done`}
+                </span>
+              </div>
+              <div className="hidden sm:flex items-center gap-1">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className={`h-1 w-8 rounded-full ${
+                      i < onboardingComplete ? "bg-accent" : "bg-border"
+                    }`}
+                  />
+                ))}
+              </div>
             </div>
-            <h3 className="text-lg font-semibold mb-1">Three steps to your first viral clip</h3>
+            <h3 className="text-lg font-semibold mb-1">
+              {onboardingComplete === 0
+                ? "Three steps to your first viral clip"
+                : onboardingComplete === 3
+                  ? "You're all set"
+                  : "Keep going — almost there"}
+            </h3>
             <p className="text-sm text-muted-foreground mb-5">
-              Get to your first AI-cut social clip in ~10 minutes.
+              {onboardingComplete === 0
+                ? "Get to your first AI-cut social clip in ~10 minutes."
+                : `${3 - onboardingComplete} step${3 - onboardingComplete === 1 ? "" : "s"} left.`}
             </p>
             <div className="space-y-3">
               <Step
@@ -180,6 +210,7 @@ export default async function DashboardPage() {
                 desc="Link LinkedIn (active), Instagram, or Facebook so we can post on your behalf."
                 href="/dashboard/accounts"
                 cta="Connect →"
+                done={onboarding.connectedAccount}
               />
               <Step
                 num={2}
@@ -187,6 +218,7 @@ export default async function DashboardPage() {
                 desc="Paste a YouTube URL — Klone picks viral moments + auto-edits cinematic 9:16 vertical clips."
                 href="/dashboard/clips"
                 cta="Open Clip Studio →"
+                done={onboarding.generatedClip}
               />
               <Step
                 num={3}
@@ -194,6 +226,7 @@ export default async function DashboardPage() {
                 desc="Send a clip to Compose → pick platforms → post now or schedule for later."
                 href="/dashboard/create"
                 cta="Compose →"
+                done={onboarding.publishedPost}
               />
             </div>
           </div>
@@ -364,27 +397,39 @@ function Step({
   desc,
   href,
   cta,
+  done,
 }: {
   num: number;
   title: string;
   desc: string;
   href: string;
   cta: string;
+  done?: boolean;
 }) {
   return (
     <Link
       href={href}
-      className="flex items-start gap-4 p-3 rounded-lg hover:bg-accent/5 transition-colors group"
+      className={`flex items-start gap-4 p-3 rounded-lg hover:bg-accent/5 transition-colors group ${
+        done ? "opacity-60" : ""
+      }`}
     >
-      <div className="w-7 h-7 rounded-full bg-accent/15 text-accent flex items-center justify-center text-xs font-semibold flex-shrink-0">
-        {num}
+      <div
+        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0 ${
+          done
+            ? "bg-success/15 text-success"
+            : "bg-accent/15 text-accent"
+        }`}
+      >
+        {done ? <CheckCircle2 className="w-4 h-4" /> : num}
       </div>
       <div className="flex-1 min-w-0">
-        <h4 className="text-sm font-medium">{title}</h4>
+        <h4 className={`text-sm font-medium ${done ? "line-through text-muted-foreground" : ""}`}>
+          {title}
+        </h4>
         <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
       </div>
       <span className="text-xs text-accent self-center opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-        {cta}
+        {done ? "Done" : cta}
       </span>
     </Link>
   );
