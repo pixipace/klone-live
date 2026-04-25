@@ -1,42 +1,52 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { Input } from "@/components/ui/input";
-import { PasswordInput } from "@/components/ui/password-input";
 import { Button } from "@/components/ui/button";
+import { PasswordInput, StrengthMeter, scorePassword } from "@/components/ui/password-input";
 import { AuthShowcase } from "@/components/shared/auth-showcase";
 import { Loader2 } from "lucide-react";
 
-export default function LoginPage() {
-  const [email, setEmail] = useState("");
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<div className="text-muted-foreground p-8">Loading…</div>}>
+      <ResetForm />
+    </Suspense>
+  );
+}
+
+function ResetForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const token = searchParams.get("token") || "";
+
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    if (password !== confirm) {
+      setError("Passwords don't match");
+      return;
+    }
     setLoading(true);
-
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch("/api/auth/reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ token, password }),
       });
-
       const data = await res.json();
-
       if (!res.ok) {
-        setError(data.error || "Login failed");
+        setError(data.error || "Reset failed");
         return;
       }
-
-      router.push("/dashboard");
+      router.push("/login?reset=1");
     } catch {
       setError("Something went wrong");
     } finally {
@@ -46,11 +56,8 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen grid grid-cols-1 lg:grid-cols-[1fr_1.1fr]">
-      {/* Left side - Form */}
       <div className="flex items-center justify-center px-6 py-12 relative">
-        {/* Mobile-only background */}
         <div className="lg:hidden absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-accent/10 to-transparent pointer-events-none" />
-
         <div className="w-full max-w-sm space-y-6 relative">
           <div>
             <Link href="/" className="inline-flex items-center gap-2.5 mb-10">
@@ -62,11 +69,17 @@ export default function LoginPage() {
               </div>
               <span className="text-xl font-bold tracking-tight">KLONE</span>
             </Link>
-            <h1 className="text-3xl font-bold tracking-tight">Welcome back</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Set a new password</h1>
             <p className="text-sm text-muted-foreground mt-2">
-              Log in to continue managing your social media.
+              Pick something strong. You&apos;ll be logged in once it&apos;s saved.
             </p>
           </div>
+
+          {!token && (
+            <div className="px-4 py-3 rounded-lg bg-error/10 border border-error/20 text-error text-sm">
+              Missing or invalid link. <Link href="/forgot-password" className="underline">Request a new one</Link>.
+            </div>
+          )}
 
           {error && (
             <div className="px-4 py-3 rounded-lg bg-error/10 border border-error/20 text-error text-sm">
@@ -75,69 +88,59 @@ export default function LoginPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
-              label="Email address"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              required
-            />
             <div>
               <PasswordInput
-                label="Password"
-                placeholder="Enter your password"
+                label="New password"
+                placeholder="At least 8 characters"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
                 required
+                minLength={8}
+                autoComplete="new-password"
               />
-              <Link
-                href="/forgot-password"
-                className="text-xs text-muted-foreground hover:text-accent mt-2 inline-block"
-              >
-                Forgot password?
-              </Link>
+              <div className="mt-2">
+                <StrengthMeter password={password} />
+              </div>
             </div>
-            <Button className="w-full" size="lg" disabled={loading}>
+            <PasswordInput
+              label="Confirm new password"
+              placeholder="Type it again"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              required
+              minLength={8}
+              autoComplete="new-password"
+            />
+            <Button
+              className="w-full"
+              size="lg"
+              disabled={
+                loading ||
+                !token ||
+                password.length < 8 ||
+                scorePassword(password).label === "weak" ||
+                password !== confirm
+              }
+            >
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Logging in...
+                  Saving…
                 </>
               ) : (
-                "Log in"
+                "Save new password"
               )}
             </Button>
           </form>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-background px-3 text-muted">New to Klone?</span>
-            </div>
-          </div>
-
-          <Link href="/signup" className="block">
-            <Button variant="outline" className="w-full" size="lg">
-              Create an account
-            </Button>
-          </Link>
         </div>
       </div>
-
-      {/* Right side - Showcase */}
       <AuthShowcase
-        title="Welcome back to Klone"
-        subtitle="Pick up where you left off. Manage and publish content across all your social media accounts."
+        title="Almost done"
+        subtitle="Set a strong password and you'll be logged back in immediately."
         bullets={[
-          "All your accounts in one dashboard",
-          "Upload videos directly from your device",
-          "Schedule for the perfect time",
-          "Secure and private — your data, your control",
+          "Mixed case + numbers + symbol = strong",
+          "Use a password manager — your future self will thank you",
+          "Old password is replaced everywhere",
         ]}
       />
     </div>

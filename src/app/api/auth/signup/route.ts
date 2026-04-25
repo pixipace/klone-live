@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createSession } from "@/lib/auth";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { sendEmail } from "@/lib/email";
+import { welcomeEmail } from "@/lib/email-templates";
 import bcrypt from "bcryptjs";
 
 export async function POST(request: NextRequest) {
@@ -77,6 +79,12 @@ export async function POST(request: NextRequest) {
       credits: user.credits,
       role: user.role,
     });
+
+    // Welcome email (best-effort — failure does not block signup)
+    const tmpl = welcomeEmail(user.name || "");
+    sendEmail({ to: user.email, subject: tmpl.subject, html: tmpl.html }).catch(
+      (err) => console.warn("[signup] welcome email failed:", err)
+    );
 
     return NextResponse.json({ success: true, user: { id: user.id, name: user.name, email: user.email } });
   } catch (err) {

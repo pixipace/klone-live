@@ -8,6 +8,7 @@ import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { RetryButton } from "./retry-button";
+import { CancelScheduledButton } from "./cancel-scheduled-button";
 
 export const dynamic = "force-dynamic";
 
@@ -87,7 +88,7 @@ export default async function PostsPage({
         </Link>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 items-center flex-wrap">
         {FILTERS.map((f) => (
           <Link
             key={f.id}
@@ -101,6 +102,9 @@ export default async function PostsPage({
             {f.label}
           </Link>
         ))}
+        {filter === "scheduled" && posts.length > 0 && (
+          <CancelScheduledButton count={posts.length} />
+        )}
       </div>
 
       {posts.length === 0 ? (

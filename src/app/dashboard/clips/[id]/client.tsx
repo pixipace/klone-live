@@ -213,6 +213,16 @@ function AutoDistributePanel({
   const [clipsPerDay, setClipsPerDay] = useState(1);
   const [skipWeekends, setSkipWeekends] = useState(true);
   const [withAi, setWithAi] = useState(true);
+  const [timezone, setTimezone] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      } catch {
+        return "UTC";
+      }
+    }
+    return "UTC";
+  });
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ scheduled: number; firstAt: string; lastAt: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -239,6 +249,7 @@ function AutoDistributePanel({
           clipsPerDay,
           skipWeekends,
           withAiHashtags: withAi,
+          timezone,
         }),
       });
       const data = await res.json();
@@ -352,26 +363,50 @@ function AutoDistributePanel({
                 ))}
               </select>
             </div>
-            <div className="flex flex-col gap-2 justify-center">
-              <label className="flex items-center gap-2 text-xs cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={skipWeekends}
-                  onChange={(e) => setSkipWeekends(e.target.checked)}
-                  className="accent-accent"
-                />
-                Skip weekends
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                Audience timezone
               </label>
-              <label className="flex items-center gap-2 text-xs cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={withAi}
-                  onChange={(e) => setWithAi(e.target.checked)}
-                  className="accent-accent"
-                />
-                AI-generated hashtags per platform
-              </label>
+              <select
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm"
+              >
+                <option value={timezone}>{timezone} (your timezone)</option>
+                <option value="America/New_York">US East (NYC)</option>
+                <option value="America/Los_Angeles">US West (LA)</option>
+                <option value="America/Chicago">US Central (Chicago)</option>
+                <option value="Europe/London">UK / Ireland</option>
+                <option value="Europe/Paris">Europe Central</option>
+                <option value="Asia/Karachi">Pakistan</option>
+                <option value="Asia/Kolkata">India</option>
+                <option value="Asia/Dubai">UAE / Gulf</option>
+                <option value="Asia/Singapore">Singapore / SE Asia</option>
+                <option value="Australia/Sydney">Sydney / AU East</option>
+                <option value="UTC">UTC</option>
+              </select>
             </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={skipWeekends}
+                onChange={(e) => setSkipWeekends(e.target.checked)}
+                className="accent-accent"
+              />
+              Skip weekends
+            </label>
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={withAi}
+                onChange={(e) => setWithAi(e.target.checked)}
+                className="accent-accent"
+              />
+              AI-generated hashtags per platform
+            </label>
           </div>
 
           <div className="rounded-lg bg-card/40 border border-border/40 p-3 text-xs text-muted-foreground">

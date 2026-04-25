@@ -8,26 +8,38 @@ datasource db {
 }
 
 model User {
-  id             String          @id @default(cuid())
-  name           String?
-  email          String          @unique
-  passwordHash   String
-  plan           String          @default("FREE")
-  role           String          @default("USER")
-  credits        Int             @default(0)
-  banned         Boolean         @default(false)
-  /** JSON object of per-user feature flags, e.g. {"clipper":false,"posting":true}.
-    * Missing key = feature enabled (default-on). */
-  featureFlags   String?
-  /** Per-user override of monthly clip-job limit. NULL = use plan default. */
-  maxClipsPerMonth Int?
-  /** Owner-only private notes about the user. */
-  notes          String?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  socialAccounts SocialAccount[]
-  posts          Post[]
-  clipJobs       ClipJob[]
+  id                  String               @id @default(cuid())
+  name                String?
+  email               String               @unique
+  passwordHash        String
+  plan                String               @default("FREE")
+  role                String               @default("USER")
+  credits             Int                  @default(0)
+  banned              Boolean              @default(false)
+  featureFlags        String?
+  maxClipsPerMonth    Int?
+  notes               String?
+  notifyOnPost        Boolean              @default(true)
+  audienceTimezone    String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  socialAccounts      SocialAccount[]
+  posts               Post[]
+  clipJobs            ClipJob[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model ClipJob {
