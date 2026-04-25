@@ -381,7 +381,7 @@ export default function CreatePostPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-6 pb-24 lg:pb-0">
       {/* Result Banner */}
       {prefillBanner && (
         <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-accent/10 border border-accent/20 text-accent text-sm">
@@ -820,7 +820,7 @@ export default function CreatePostPage() {
             )}
           </Card>
 
-          <div className="space-y-2">
+          <div className="space-y-2 hidden lg:block">
             <Button
               className="w-full"
               size="lg"
@@ -846,11 +846,54 @@ export default function CreatePostPage() {
           </div>
 
           {selectedPlatforms.length > 0 && (
-            <div className="text-xs text-muted text-center">
+            <div className="text-xs text-muted text-center hidden lg:block">
               Posting to {selectedPlatforms.length} platform
               {selectedPlatforms.length > 1 ? "s" : ""}
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Mobile sticky publish bar — visible only below lg breakpoint.
+          Sits over the page bottom (parent has pb-24 lg:pb-0 to clear it).
+          Single primary action; secondary "Draft" deferred to desktop. */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur-md border-t border-border px-4 py-3">
+        <div className="max-w-5xl mx-auto flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] text-muted-foreground truncate">
+              {selectedPlatforms.length === 0
+                ? "Pick at least one platform"
+                : `Posting to ${selectedPlatforms.length} platform${selectedPlatforms.length > 1 ? "s" : ""}${scheduleDate ? ` · ${scheduleDate}` : ""}`}
+            </p>
+            {!mediaUrl && !caption.trim() && (
+              <p className="text-[10px] text-muted">
+                Add caption or media to enable
+              </p>
+            )}
+          </div>
+          <Button
+            size="lg"
+            onClick={handlePost}
+            disabled={
+              posting ||
+              uploading ||
+              selectedPlatforms.length === 0 ||
+              (!caption.trim() && !mediaUrl)
+            }
+            className="shrink-0"
+          >
+            {posting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                Posting…
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4 mr-1.5" />
+                {scheduleDate ? "Schedule" : "Post"}
+              </>
+            )}
+          </Button>
         </div>
       </div>
     </div>
