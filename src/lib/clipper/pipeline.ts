@@ -178,17 +178,33 @@ export async function runPipeline(jobId: string): Promise<void> {
             .filter((g) => g.endSec <= inputT)
             .reduce((sum, g) => sum + (g.endSec - g.startSec), 0);
 
-        // Run independent prep tasks in parallel — face detect, mood
-        // classification, emphasis pick, B-roll resolve. ~10-15s saved per
-        // clip vs sequential. B-roll is the slowest (Gemma vision per
-        // candidate) so kicking it off early matters.
-        const [face, moodPickResult, emphasisMomentsRaw, brollOverlays] = await Promise.all([
-          detectFaceForClip(dl.videoPath, clip.startSec, clip.endSec, workDir).catch(
-            (err) => {
-              console.warn(`[clipper] face detect failed for ${clip.id}:`, err);
-              return null;
-            }
-          ),
+        // Face detection runs first (sequentially) because B-roll's PiP
+        // placement depends on which side of the cropped frame the
+        // speaker's face ends up on. The other prep tasks then run in
+        // parallel alongside B-roll resolution.
+        const face = await detectFaceForClip(
+          dl.videoPath,
+          clip.startSec,
+          clip.endSec,
+          workDir
+        ).catch((err) => {
+          console.warn(`[clipper] face detect failed for ${clip.id}:`, err);
+          return null;
+        });
+
+        let cropX: number | undefined;
+        let brollSide: "left" | "right" = "right";
+        if (face) {
+          const stripW = (face.imgH * 9) / 16;
+          cropX = cropXForFace(face, stripW);
+          // Where does the face land in the OUTPUT frame? If face center
+          // is in the right half of the crop, put B-roll on the LEFT
+          // (and vice versa) so they don't compete for visual attention.
+          const faceCenterInCrop = face.x + face.w / 2 - cropX;
+          brollSide = faceCenterInCrop > stripW / 2 ? "left" : "right";
+        }
+
+        const [moodPickResult, emphasisMomentsRaw, brollOverlays] = await Promise.all([
           musicEnabled
             ? pickMood(clip.transcript ?? "", clip.hookTitle)
                 .then((mood) => pickMusicTrack(mood))
@@ -216,6 +232,7 @@ export async function runPipeline(jobId: string): Promise<void> {
                 outputDur,
                 workDir,
                 clipId: clip.id,
+                side: brollSide,
                 silenceMappingFn,
               }).catch((err) => {
                 console.warn(`[clipper] broll resolve failed for ${clip.id}:`, err);
@@ -223,12 +240,6 @@ export async function runPipeline(jobId: string): Promise<void> {
               })
             : Promise.resolve([]),
         ]);
-
-        let cropX: number | undefined;
-        if (face) {
-          const stripW = (face.imgH * 9) / 16;
-          cropX = cropXForFace(face, stripW);
-        }
 
         const musicPick = moodPickResult;
 

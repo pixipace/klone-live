@@ -40,6 +40,9 @@ export async function resolveClipBroll(opts: {
   outputDur: number;
   workDir: string;
   clipId: string;
+  /** "left" or "right" — which side of the frame to place the PiP on.
+   *  Should be the side OPPOSITE the speaker's face. Default "right". */
+  side?: "left" | "right";
   /** Cumulative seconds of silence removed before each input-time t.
    *  Used to convert moment times from input-relative → output-relative. */
   silenceMappingFn?: (inputT: number) => number;
@@ -51,6 +54,7 @@ export async function resolveClipBroll(opts: {
     outputDur,
     workDir,
     clipId,
+    side = "right",
     silenceMappingFn,
   } = opts;
 
@@ -134,7 +138,7 @@ export async function resolveClipBroll(opts: {
     // Render the corner PiP frame
     const framePath = path.join(brollDir, `frame-${i + 1}.png`);
     try {
-      await renderBrollFrame(chosen.cachedPath, framePath);
+      await renderBrollFrame(chosen.cachedPath, framePath, side);
     } catch (err) {
       console.warn(`[broll] render failed for ${chosen.hit.url}:`, err);
       continue;
@@ -162,9 +166,15 @@ export async function resolveClipBroll(opts: {
 const PYTHON_BIN = process.env.PYTHON_BIN || "/opt/homebrew/bin/python3";
 const RENDER_SCRIPT = path.join(process.cwd(), "scripts", "render-broll-frame.py");
 
-function renderBrollFrame(srcImage: string, outPng: string): Promise<void> {
+function renderBrollFrame(
+  srcImage: string,
+  outPng: string,
+  side: "left" | "right"
+): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(PYTHON_BIN, [RENDER_SCRIPT, srcImage, outPng]);
+    const child = spawn(PYTHON_BIN, [RENDER_SCRIPT, srcImage, outPng], {
+      env: { ...process.env, BROLL_SIDE: side },
+    });
     let stderr = "";
     child.stderr.on("data", (d) => (stderr += d.toString()));
     child.on("close", (code) => {

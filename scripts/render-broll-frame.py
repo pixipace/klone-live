@@ -18,12 +18,16 @@ from PIL import Image, ImageDraw, ImageFilter
 CANVAS_W = 1080
 CANVAS_H = 1920
 
-# PiP card geometry (top-right corner, below hook overlay area)
-PIP_W = int(os.environ.get("BROLL_PIP_W", "378"))
-PIP_H = int(os.environ.get("BROLL_PIP_H", "504"))
-TOP = int(os.environ.get("BROLL_TOP", "260"))
-RIGHT_PAD = int(os.environ.get("BROLL_RIGHT_PAD", "36"))
-RADIUS = int(os.environ.get("BROLL_RADIUS", "28"))
+# PiP card geometry. Default is a 50%-wide card (much bigger than v1 35%
+# so it reads as a real visual element, not an icon).
+PIP_W = int(os.environ.get("BROLL_PIP_W", "540"))
+PIP_H = int(os.environ.get("BROLL_PIP_H", "720"))
+TOP = int(os.environ.get("BROLL_TOP", "240"))
+SIDE_PAD = int(os.environ.get("BROLL_SIDE_PAD", "36"))
+# "right" (default) or "left" — set per-clip to put the PiP on the
+# OPPOSITE side from the speaker's face so they don't compete.
+SIDE = os.environ.get("BROLL_SIDE", "right").strip().lower()
+RADIUS = int(os.environ.get("BROLL_RADIUS", "32"))
 
 # Shadow
 SHADOW_BLUR = 18
@@ -73,7 +77,10 @@ def render(src_path: str, out_path: str) -> None:
     # Build full-frame transparent canvas
     canvas = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0, 0, 0, 0))
 
-    pip_x = CANVAS_W - PIP_W - RIGHT_PAD
+    if SIDE == "left":
+        pip_x = SIDE_PAD
+    else:
+        pip_x = CANVAS_W - PIP_W - SIDE_PAD
     pip_y = TOP
 
     # Drop shadow — render a black rounded rect, blur, paste under PiP
