@@ -70,10 +70,22 @@ export async function firePost(post: Post): Promise<FireResult> {
     },
   });
 
+  // Cleanup: delete the media file IF this is the last pending post for it.
+  // Auto-distribute creates many Post rows pointing to the same clip mp4
+  // across multiple days/platforms. We keep the file until they're all done.
   if (succeeded > 0 && post.mediaUrl?.startsWith("/api/uploads/")) {
-    const filename = post.mediaUrl.replace("/api/uploads/", "");
-    const filePath = path.join(process.cwd(), ".uploads", filename);
-    unlink(filePath).catch(() => {});
+    const stillPending = await prisma.post.count({
+      where: {
+        mediaUrl: post.mediaUrl,
+        status: { in: ["SCHEDULED", "QUEUED", "POSTING"] },
+        id: { not: post.id },
+      },
+    });
+    if (stillPending === 0) {
+      const filename = post.mediaUrl.replace("/api/uploads/", "");
+      const filePath = path.join(process.cwd(), ".uploads", filename);
+      unlink(filePath).catch(() => {});
+    }
   }
 
   return { status, results };

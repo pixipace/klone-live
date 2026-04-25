@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { UserActions, SuperAdminControls } from "./actions";
+// (kept compact — the auto-distribute UI lives on /dashboard/clips/[id])
 
 export const dynamic = "force-dynamic";
 

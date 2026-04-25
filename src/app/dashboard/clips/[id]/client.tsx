@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ExternalLink, Flame, Clock, Send, Sparkles, Check, Pencil, Save, X, RotateCcw } from "lucide-react";
+import { ArrowLeft, ExternalLink, Flame, Clock, Send, Sparkles, Check, Pencil, Save, X, RotateCcw, Zap, Loader2 } from "lucide-react";
 
 export type ClipDetail = {
   id: string;
@@ -191,6 +191,231 @@ function formatTime(s: number): string {
   return `${m}:${String(sec).padStart(2, "0")}`;
 }
 
+const PLATFORMS = [
+  { id: "linkedin", name: "LinkedIn", color: "#0077b5" },
+  { id: "instagram", name: "Instagram", color: "#e4405f" },
+  { id: "facebook", name: "Facebook", color: "#1877f2" },
+  { id: "tiktok", name: "TikTok", color: "#00f2ea" },
+  { id: "youtube", name: "YouTube", color: "#ff0000" },
+] as const;
+
+function AutoDistributePanel({
+  jobId,
+  clipCount,
+}: {
+  jobId: string;
+  clipCount: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<Set<string>>(
+    new Set(["linkedin"])
+  );
+  const [clipsPerDay, setClipsPerDay] = useState(1);
+  const [skipWeekends, setSkipWeekends] = useState(true);
+  const [withAi, setWithAi] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<{ scheduled: number; firstAt: string; lastAt: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const togglePlatform = (id: string) => {
+    setSelectedPlatforms((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const submit = async () => {
+    setSubmitting(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await fetch(`/api/clips/${jobId}/auto-distribute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platforms: Array.from(selectedPlatforms),
+          clipsPerDay,
+          skipWeekends,
+          withAiHashtags: withAi,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Distribute failed");
+        return;
+      }
+      setResult({
+        scheduled: data.scheduled,
+        firstAt: data.firstAt,
+        lastAt: data.lastAt,
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (clipCount === 0) return null;
+
+  if (result) {
+    return (
+      <Card className="p-5 border-success/30 bg-success/5">
+        <div className="flex items-center gap-2 mb-2">
+          <Check className="w-4 h-4 text-success" />
+          <h3 className="text-sm font-semibold text-success">
+            Scheduled {result.scheduled} posts
+          </h3>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          First post: {new Date(result.firstAt).toLocaleString()} · Last post:{" "}
+          {new Date(result.lastAt).toLocaleString()}
+        </p>
+        <Link
+          href="/dashboard/posts?filter=scheduled"
+          className="inline-block mt-3 text-xs text-accent hover:underline"
+        >
+          View scheduled posts →
+        </Link>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-5 border-accent/30 bg-gradient-to-br from-accent/5 to-card">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2">
+          <Zap className="w-4 h-4 text-accent" />
+          <h3 className="text-sm font-semibold">Auto-distribute clips</h3>
+        </div>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="text-xs text-accent hover:underline"
+        >
+          {open ? "Hide" : "Set up →"}
+        </button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Skip the manual posting. Klone schedules each clip across your selected
+        platforms at the best times for each one.
+      </p>
+
+      {open && (
+        <div className="mt-5 space-y-4">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-2 block">
+              Post to
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {PLATFORMS.map((p) => {
+                const active = selectedPlatforms.has(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => togglePlatform(p.id)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs transition-all ${
+                      active
+                        ? "border-accent bg-accent/10 text-foreground"
+                        : "border-border bg-card text-muted-foreground"
+                    }`}
+                  >
+                    <div
+                      className="w-4 h-4 rounded text-white text-[8px] font-bold flex items-center justify-center"
+                      style={{ backgroundColor: p.color }}
+                    >
+                      {p.name[0]}
+                    </div>
+                    {p.name}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-muted mt-2">
+              You must have these accounts connected.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                Clips per day
+              </label>
+              <select
+                value={clipsPerDay}
+                onChange={(e) => setClipsPerDay(parseInt(e.target.value, 10))}
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm"
+              >
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <option key={n} value={n}>
+                    {n} clip{n === 1 ? "" : "s"} per day
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-2 justify-center">
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={skipWeekends}
+                  onChange={(e) => setSkipWeekends(e.target.checked)}
+                  className="accent-accent"
+                />
+                Skip weekends
+              </label>
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={withAi}
+                  onChange={(e) => setWithAi(e.target.checked)}
+                  className="accent-accent"
+                />
+                AI-generated hashtags per platform
+              </label>
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-card/40 border border-border/40 p-3 text-xs text-muted-foreground">
+            <strong className="text-foreground">{clipCount}</strong> clip
+            {clipCount === 1 ? "" : "s"} ×{" "}
+            <strong className="text-foreground">
+              {selectedPlatforms.size || "?"}
+            </strong>{" "}
+            platform{selectedPlatforms.size === 1 ? "" : "s"} ={" "}
+            <strong className="text-foreground">
+              {clipCount * selectedPlatforms.size}
+            </strong>{" "}
+            posts across{" "}
+            <strong className="text-foreground">
+              ~{Math.ceil(clipCount / clipsPerDay)}
+            </strong>{" "}
+            day{Math.ceil(clipCount / clipsPerDay) === 1 ? "" : "s"}
+          </div>
+
+          {error && <p className="text-xs text-error">{error}</p>}
+
+          <Button
+            size="sm"
+            onClick={submit}
+            disabled={submitting || selectedPlatforms.size === 0}
+          >
+            {submitting ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                Scheduling…
+              </>
+            ) : (
+              <>
+                <Zap className="w-3.5 h-3.5 mr-2" />
+                Schedule {clipCount * selectedPlatforms.size} posts
+              </>
+            )}
+          </Button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function ClipDetailClient({ job }: { job: JobDetail }) {
   const router = useRouter();
   const [titles, setTitles] = useState<Record<string, string>>(() =>
@@ -270,6 +495,11 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
       {repickErr && (
         <p className="text-xs text-error">{repickErr}</p>
       )}
+
+      <AutoDistributePanel
+        jobId={job.id}
+        clipCount={job.clips.filter((c) => c.videoPath).length}
+      />
 
       {job.clips.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted-foreground">
