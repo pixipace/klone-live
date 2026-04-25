@@ -11,6 +11,18 @@ export function Navbar() {
         </Link>
         <nav className="hidden md:flex items-center gap-6">
           <Link
+            href="/how-it-works"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            How it works
+          </Link>
+          <Link
+            href="/pricing"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Pricing
+          </Link>
+          <Link
             href="/#features"
             className="text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
