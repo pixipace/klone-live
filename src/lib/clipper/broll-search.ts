@@ -137,9 +137,11 @@ async function searchPexels(query: string): Promise<BrollImageHit | null> {
  */
 async function searchPixabay(query: string): Promise<BrollImageHit | null> {
   if (!PIXABAY_API_KEY) return null;
+  // No orientation filter — Pixabay's vertical-only search returns ~0 hits
+  // for most queries. Renderer crops any aspect ratio to the 378x504 PiP.
   const url = `https://pixabay.com/api/?key=${encodeURIComponent(
     PIXABAY_API_KEY
-  )}&q=${encodeURIComponent(query)}&image_type=photo&orientation=vertical&per_page=3&safesearch=true`;
+  )}&q=${encodeURIComponent(query)}&image_type=photo&per_page=3&safesearch=true`;
   try {
     const r = await fetchWithTimeout(url);
     if (!r.ok) return null;
