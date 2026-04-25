@@ -17,11 +17,10 @@ export async function PATCH(
   const body = await request.json();
   const action = body.action as string;
 
-  // Block admin from de-admining themselves (so the system always has at
-  // least one admin path)
-  if (admin.id === id && (action === "demote" || action === "ban")) {
+  // Owner can't ban themselves (would lock out)
+  if (admin.id === id && action === "ban") {
     return NextResponse.json(
-      { error: "Can't demote or ban yourself" },
+      { error: "Can't ban yourself" },
       { status: 400 }
     );
   }
@@ -35,18 +34,50 @@ export async function PATCH(
       await prisma.user.update({ where: { id }, data: { plan } });
       return NextResponse.json({ success: true });
     }
-    case "promote":
-      await prisma.user.update({ where: { id }, data: { role: "ADMIN" } });
-      return NextResponse.json({ success: true });
-    case "demote":
-      await prisma.user.update({ where: { id }, data: { role: "USER" } });
-      return NextResponse.json({ success: true });
     case "ban":
       await prisma.user.update({ where: { id }, data: { banned: true } });
       return NextResponse.json({ success: true });
     case "unban":
       await prisma.user.update({ where: { id }, data: { banned: false } });
       return NextResponse.json({ success: true });
+    case "setFeatureFlags": {
+      const flags = body.featureFlags;
+      if (typeof flags !== "object" || flags === null) {
+        return NextResponse.json(
+          { error: "featureFlags must be an object" },
+          { status: 400 }
+        );
+      }
+      const json =
+        Object.keys(flags as object).length === 0 ? null : JSON.stringify(flags);
+      await prisma.user.update({
+        where: { id },
+        data: { featureFlags: json },
+      });
+      return NextResponse.json({ success: true });
+    }
+    case "setLimits": {
+      const max = body.maxClipsPerMonth;
+      const value =
+        max === null || max === undefined
+          ? null
+          : typeof max === "number" && max >= 0
+            ? Math.floor(max)
+            : null;
+      await prisma.user.update({
+        where: { id },
+        data: { maxClipsPerMonth: value },
+      });
+      return NextResponse.json({ success: true });
+    }
+    case "setNotes": {
+      const notes = typeof body.notes === "string" ? body.notes : null;
+      await prisma.user.update({
+        where: { id },
+        data: { notes: notes && notes.trim().length > 0 ? notes : null },
+      });
+      return NextResponse.json({ success: true });
+    }
     default:
       return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   }
@@ -67,7 +98,6 @@ export async function DELETE(
     );
   }
 
-  // Wipe clip files for this user
   const jobs = await prisma.clipJob.findMany({
     where: { userId: id },
     select: { id: true },
