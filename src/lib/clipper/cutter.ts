@@ -245,19 +245,10 @@ export async function cutVerticalClip(
 
     let lastVideoLabel = "v0";
 
-    if (captionsInputIdx !== null) {
-      // Scale captions sequence to match output, overlay full-frame
-      parts.push(
-        `[${captionsInputIdx}:v]format=rgba,scale=${TARGET_W}:${TARGET_H}[capScaled]`
-      );
-      parts.push(`[${lastVideoLabel}][capScaled]overlay=x=0:y=0[vCap]`);
-      lastVideoLabel = "vCap";
-    }
-
-    // B-roll PiP overlays — each frame PNG is full 1080x1920 transparent with
-    // the rounded thumbnail rendered top-right. Time-gated via enable= and
-    // fade in/out for a smooth pop. Stacked under the hook so hook wins on
-    // any timing overlap (shouldn't happen — picker constrains startSec>=4.5).
+    // B-roll FIRST (full-screen cutaway frames sit ON the speaker video).
+    // Then captions and hook layer ON TOP of B-roll — otherwise full-screen
+    // B-roll would block the captions and the user wouldn't see them
+    // during the cutaway moment.
     for (let bi = 0; bi < brollInputs.length; bi++) {
       const { idx, overlay } = brollInputs[bi];
       const fadeOutStart = Math.max(
@@ -272,6 +263,15 @@ export async function cutVerticalClip(
         `[${lastVideoLabel}][brollFaded${bi}]overlay=x=0:y=0:enable='between(t,${overlay.startSec.toFixed(3)},${overlay.endSec.toFixed(3)})'[${outLabel}]`
       );
       lastVideoLabel = outLabel;
+    }
+
+    if (captionsInputIdx !== null) {
+      // Scale captions sequence to match output, overlay full-frame
+      parts.push(
+        `[${captionsInputIdx}:v]format=rgba,scale=${TARGET_W}:${TARGET_H}[capScaled]`
+      );
+      parts.push(`[${lastVideoLabel}][capScaled]overlay=x=0:y=0[vCap]`);
+      lastVideoLabel = "vCap";
     }
 
     if (hookInputIdx !== null && options.hookOverlay) {
