@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ExternalLink, Flame, Clock, Send, Sparkles, Check, Pencil, Save, X, RotateCcw, Zap, Loader2, RefreshCcw } from "lucide-react";
+import { ArrowLeft, ExternalLink, Flame, Clock, Send, Sparkles, Check, Pencil, Save, X, RotateCcw, Zap, Loader2, RefreshCcw, Scissors, Film } from "lucide-react";
 
 export type ClipDetail = {
   id: string;
@@ -27,8 +27,236 @@ export type JobDetail = {
   id: string;
   sourceUrl: string;
   sourceTitle: string | null;
+  highlightReelPath: string | null;
+  highlightReelThumb: string | null;
+  highlightReelHook: string | null;
   clips: ClipDetail[];
 };
+
+function TrimDialog({
+  jobId,
+  clip,
+  onClose,
+  onTrimmed,
+}: {
+  jobId: string;
+  clip: ClipDetail;
+  onClose: () => void;
+  onTrimmed: (newDuration: number) => void;
+}) {
+  const [trimStart, setTrimStart] = useState(0);
+  const [trimEnd, setTrimEnd] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const newDur = Math.max(0, clip.durationSec - trimStart - trimEnd);
+
+  const submit = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/clips/${jobId}/clip/${clip.id}/trim`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trimStartSec: trimStart,
+            trimEndSec: trimEnd,
+          }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Trim failed");
+        return;
+      }
+      onTrimmed(data.newDuration);
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 p-4 rounded-lg border border-accent/40 bg-accent/5 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium">
+          Trim clip · current {clip.durationSec.toFixed(1)}s
+        </span>
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-[11px] text-muted-foreground block mb-1">
+            Trim from start (s)
+          </label>
+          <input
+            type="number"
+            min={0}
+            max={Math.max(0, clip.durationSec - 5)}
+            step={0.5}
+            value={trimStart}
+            onChange={(e) => setTrimStart(Math.max(0, parseFloat(e.target.value) || 0))}
+            className="w-full bg-background border border-border rounded px-2 py-1 text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-[11px] text-muted-foreground block mb-1">
+            Trim from end (s)
+          </label>
+          <input
+            type="number"
+            min={0}
+            max={Math.max(0, clip.durationSec - 5)}
+            step={0.5}
+            value={trimEnd}
+            onChange={(e) => setTrimEnd(Math.max(0, parseFloat(e.target.value) || 0))}
+            className="w-full bg-background border border-border rounded px-2 py-1 text-sm"
+          />
+        </div>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        New duration: <strong className="text-foreground">{newDur.toFixed(1)}s</strong>{" "}
+        (must be ≥ 5s). Trim is destructive — the original clip file is replaced.
+      </p>
+      {error && <p className="text-xs text-error">{error}</p>}
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          onClick={submit}
+          disabled={busy || newDur < 5 || (trimStart === 0 && trimEnd === 0)}
+        >
+          {busy ? (
+            <>
+              <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+              Trimming…
+            </>
+          ) : (
+            <>
+              <Scissors className="w-3.5 h-3.5 mr-1" />
+              Apply trim
+            </>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function HighlightReelPanel({
+  jobId,
+  clipCount,
+  initialReel,
+}: {
+  jobId: string;
+  clipCount: number;
+  initialReel: {
+    path: string | null;
+    thumb: string | null;
+    hook: string | null;
+  };
+}) {
+  const [reel, setReel] = useState(initialReel);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (clipCount < 2) return null;
+
+  const generate = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/clips/${jobId}/highlight-reel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maxDurationSec: 90 }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to generate");
+        return;
+      }
+      setReel({
+        path: data.reelPath,
+        thumb: `/api/uploads/clips/${jobId}/highlight-reel.jpg`,
+        hook: reel.hook,
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (reel.path) {
+    return (
+      <Card className="p-5 border-accent/30 bg-gradient-to-br from-accent/5 to-card">
+        <div className="flex items-center gap-2 mb-3">
+          <Film className="w-4 h-4 text-accent" />
+          <h3 className="text-sm font-semibold">Highlight reel</h3>
+          <span className="text-[10px] text-muted-foreground">
+            top clips compiled with crossfades
+          </span>
+        </div>
+        <video
+          src={reel.path}
+          poster={reel.thumb ?? undefined}
+          controls
+          preload="metadata"
+          className="w-full rounded-lg bg-black aspect-[9/16] max-h-[600px] mx-auto"
+        />
+        {reel.hook && (
+          <p className="text-xs text-muted-foreground mt-2 text-center italic">
+            &ldquo;{reel.hook}&rdquo;
+          </p>
+        )}
+        <div className="flex gap-2 mt-3">
+          <a
+            href={reel.path}
+            download="highlight-reel.mp4"
+            className="inline-flex items-center gap-1 text-xs px-3 py-1.5 font-medium rounded-lg border border-border hover:border-accent/30 transition-colors"
+          >
+            Download reel
+          </a>
+          <Button size="sm" onClick={generate} disabled={busy} variant="outline">
+            <RefreshCcw className={`w-3.5 h-3.5 mr-1 ${busy ? "animate-spin" : ""}`} />
+            {busy ? "Re-generating…" : "Regenerate"}
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-5 border-accent/30 bg-gradient-to-br from-accent/5 to-card">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Film className="w-4 h-4 text-accent" />
+          <h3 className="text-sm font-semibold">Highlight reel</h3>
+        </div>
+        <Button size="sm" onClick={generate} disabled={busy}>
+          {busy ? (
+            <>
+              <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+              Generating…
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-3.5 h-3.5 mr-1" />
+              Make highlight reel
+            </>
+          )}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground mt-2">
+        Auto-compiles your highest-scoring clips into one ~90s reel with smooth
+        crossfades. Great for a single big-impact post.
+      </p>
+      {error && <p className="text-xs text-error mt-2">{error}</p>}
+    </Card>
+  );
+}
 
 function HookEditor({
   jobId,
@@ -520,6 +748,10 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
   const [variants, setVariants] = useState<Record<string, string[]>>(() =>
     Object.fromEntries(job.clips.map((c) => [c.id, c.hookVariants]))
   );
+  const [durations, setDurations] = useState<Record<string, number>>(() =>
+    Object.fromEntries(job.clips.map((c) => [c.id, c.durationSec]))
+  );
+  const [trimmingClipId, setTrimmingClipId] = useState<string | null>(null);
   const [repicking, setRepicking] = useState(false);
   const [repickErr, setRepickErr] = useState<string | null>(null);
 
@@ -598,6 +830,16 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
       <AutoDistributePanel
         jobId={job.id}
         clipCount={job.clips.filter((c) => c.videoPath).length}
+      />
+
+      <HighlightReelPanel
+        jobId={job.id}
+        clipCount={job.clips.filter((c) => c.videoPath).length}
+        initialReel={{
+          path: job.highlightReelPath,
+          thumb: job.highlightReelThumb,
+          hook: job.highlightReelHook,
+        }}
       />
 
       {job.clips.length === 0 ? (
@@ -688,7 +930,7 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
                   {clip.transcript.length > 280 ? "…" : ""}&rdquo;
                 </p>
               )}
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {clip.videoPath ? (
                   <>
                     <a
@@ -702,11 +944,33 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
                       <Send className="w-3.5 h-3.5 mr-1" />
                       Send to Compose
                     </Button>
+                    <button
+                      onClick={() =>
+                        setTrimmingClipId(trimmingClipId === clip.id ? null : clip.id)
+                      }
+                      className="inline-flex items-center gap-1 text-xs px-3 py-1.5 font-medium rounded-lg border border-border hover:border-accent/30 transition-colors"
+                    >
+                      <Scissors className="w-3.5 h-3.5" />
+                      Trim
+                    </button>
                   </>
                 ) : (
                   <Badge variant="default">Video processing…</Badge>
                 )}
               </div>
+              {trimmingClipId === clip.id && (
+                <TrimDialog
+                  jobId={job.id}
+                  clip={{
+                    ...clip,
+                    durationSec: durations[clip.id] ?? clip.durationSec,
+                  }}
+                  onClose={() => setTrimmingClipId(null)}
+                  onTrimmed={(newDur) =>
+                    setDurations((prev) => ({ ...prev, [clip.id]: newDur }))
+                  }
+                />
+              )}
             </Card>
           ))}
         </div>

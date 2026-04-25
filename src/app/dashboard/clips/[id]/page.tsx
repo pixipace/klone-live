@@ -28,6 +28,9 @@ export default async function ClipJobDetail({
         id: job.id,
         sourceUrl: job.sourceUrl,
         sourceTitle: job.sourceTitle,
+        highlightReelPath: job.highlightReelPath,
+        highlightReelThumb: job.highlightReelThumb,
+        highlightReelHook: job.highlightReelHook,
         clips: job.clips.map((c) => {
           let hookVariants: string[] = [];
           if (c.hookVariants) {

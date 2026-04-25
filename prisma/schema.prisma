@@ -79,6 +79,10 @@ model ClipJob {
   /** Cached transcript JSON (segment-level) so re-pick can skip download
     * + transcribe. Stored only after the first successful pipeline run. */
   cachedTranscript String?
+  /** Path to a generated highlight reel (compilation of top clips), if any. */
+  highlightReelPath  String?
+  highlightReelThumb String?
+  highlightReelHook  String?
   error           String?
   startedAt       DateTime?
   finishedAt      DateTime?
