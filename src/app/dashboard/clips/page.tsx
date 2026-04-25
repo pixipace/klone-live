@@ -168,27 +168,58 @@ export default function ClipsPage() {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
+
+    // Bulk submit: split textarea on whitespace, queue each URL serially
+    // (worker is single-flight on this hardware; queueing many at once is
+    // fine — they just process in order). 2-job inflight cap is enforced
+    // server-side, so we stop submitting once we hit it.
+    const urls = url
+      .split(/\s+/)
+      .map((u) => u.trim())
+      .filter((u) => u.length > 0);
+    if (urls.length === 0) {
+      setSubmitting(false);
+      return;
+    }
+
+    const failures: string[] = [];
+    let successes = 0;
+
     try {
-      const res = await fetch("/api/clips", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sourceUrl: url,
-          captions: optCaptions,
-          music: optMusic,
-          punchZooms: optPunch,
-          broll: optBroll,
-          translateCaptions: optTranslate,
-          guidance: guidance.trim() || undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Failed to queue job");
-      } else {
-        setUrl("");
-        fetchJobs();
+      for (const u of urls) {
+        const res = await fetch("/api/clips", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sourceUrl: u,
+            captions: optCaptions,
+            music: optMusic,
+            punchZooms: optPunch,
+            broll: optBroll,
+            translateCaptions: optTranslate,
+            guidance: guidance.trim() || undefined,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          failures.push(`${u.slice(0, 60)}${u.length > 60 ? "…" : ""}: ${data.error || "failed"}`);
+          // If we hit the inflight cap (429), stop trying — rest will fail too
+          if (res.status === 429) break;
+        } else {
+          successes += 1;
+        }
       }
+
+      if (successes > 0 && failures.length === 0) {
+        setUrl("");
+      } else if (failures.length > 0) {
+        setError(
+          successes > 0
+            ? `Queued ${successes}, but ${failures.length} failed:\n${failures.join("\n")}`
+            : failures.join("\n")
+        );
+      }
+      fetchJobs();
     } catch (err) {
       setError(String(err));
     } finally {
@@ -220,24 +251,34 @@ export default function ClipsPage() {
           <Video className="w-4 h-4 text-error" />
           New Clip Job
         </CardTitle>
-        <form onSubmit={submit} className="flex gap-2">
-          <input
-            type="url"
+        <form onSubmit={submit} className="flex flex-col gap-2">
+          <textarea
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://youtube.com/watch?v=..."
+            placeholder={
+              "https://youtube.com/watch?v=...\n\nOr paste several URLs (one per line) to queue them all."
+            }
             required
             disabled={submitting}
-            className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+            rows={url.includes("\n") ? Math.min(8, url.split("\n").length + 1) : 2}
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 font-mono resize-none"
           />
-          <Button type="submit" disabled={submitting || !url.trim()}>
-            {submitting ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Sparkles className="w-4 h-4 mr-2" />
-            )}
-            Find Clips
-          </Button>
+          <div className="flex justify-between items-center">
+            <span className="text-[11px] text-muted">
+              {(() => {
+                const n = url.split(/\s+/).filter((u) => u.trim().length > 0).length;
+                return n > 1 ? `${n} URLs queued` : "";
+              })()}
+            </span>
+            <Button type="submit" disabled={submitting || !url.trim()}>
+              {submitting ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4 mr-2" />
+              )}
+              Find Clips
+            </Button>
+          </div>
         </form>
         {error && (
           <p className="text-xs text-error mt-2">{error}</p>

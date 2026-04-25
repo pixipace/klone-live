@@ -3,6 +3,7 @@ import path from "path";
 import { prisma } from "@/lib/prisma";
 import { runPipeline } from "./pipeline";
 import { autoDistributeClips } from "./distribute";
+import { cleanupSourceCache } from "./youtube";
 import { ALL_PLATFORMS, type PlatformId } from "@/lib/platforms";
 
 const PLATFORM_SET = new Set<string>(ALL_PLATFORMS);
@@ -61,6 +62,16 @@ async function cleanupOldJobs() {
   console.log(
     `[clipper-worker] cleaned up ${oldFailed.length} FAILED job(s) older than ${FAILED_RETENTION_DAYS}d`
   );
+
+  // Also cleanup expired source-cache entries (>7d old)
+  try {
+    const removed = await cleanupSourceCache();
+    if (removed > 0) {
+      console.log(`[clipper-worker] cleaned up ${removed} expired source-cache entries`);
+    }
+  } catch (err) {
+    console.warn(`[clipper-worker] cleanupSourceCache error:`, err);
+  }
 }
 
 async function failStuckJobs() {
