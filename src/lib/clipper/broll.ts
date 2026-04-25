@@ -61,6 +61,10 @@ export async function resolveClipBroll(opts: {
     console.warn(`[broll] pickBrollMoments failed for ${clipId}:`, err);
     return [];
   }
+  console.log(
+    `[broll] ${clipId}: Gemma picked ${picks.length} moment(s)` +
+      (picks.length > 0 ? ` — [${picks.map((p) => `"${p.query}"`).join(", ")}]` : "")
+  );
   if (picks.length === 0) return [];
 
   const brollDir = path.join(workDir, `broll-${clipId}`);
@@ -78,15 +82,26 @@ export async function resolveClipBroll(opts: {
       ? Math.max(outStart + MIN_DURATION, pick.endSec - silenceMappingFn(pick.endSec))
       : pick.endSec;
     const clampedEnd = Math.min(outEnd, outputDur - 0.3);
-    if (clampedEnd - outStart < MIN_DURATION) continue;
+    if (clampedEnd - outStart < MIN_DURATION) {
+      console.log(
+        `[broll] ${clipId}: skipped "${pick.query}" — duration too short after silence trim`
+      );
+      continue;
+    }
 
-    let chosen: { hit: BrollImageHit; cachedPath: string } | null = null;
+    let chosen: { hit: BrollImageHit; cachedPath: string; score: number } | null = null;
 
     let candidates: BrollImageHit[] = [];
     try {
       candidates = await searchBroll(pick.query, pick.type);
     } catch (err) {
       console.warn(`[broll] search failed for "${pick.query}":`, err);
+      continue;
+    }
+    if (candidates.length === 0) {
+      console.log(
+        `[broll] ${clipId}: no candidates for "${pick.query}" — set PEXELS_API_KEY/PIXABAY_API_KEY for broader coverage`
+      );
       continue;
     }
 
@@ -105,8 +120,12 @@ export async function resolveClipBroll(opts: {
         continue;
       }
       if (score >= QUALITY_THRESHOLD) {
-        chosen = { hit, cachedPath: cached };
+        chosen = { hit, cachedPath: cached, score };
         break;
+      } else {
+        console.log(
+          `[broll] ${clipId}: rejected ${hit.source} for "${pick.query}" (score ${score}/10)`
+        );
       }
     }
 
@@ -121,6 +140,9 @@ export async function resolveClipBroll(opts: {
       continue;
     }
 
+    console.log(
+      `[broll] ${clipId}: ✓ "${pick.query}" → ${chosen.hit.source} (score ${chosen.score}/10) at ${outStart.toFixed(1)}-${clampedEnd.toFixed(1)}s`
+    );
     overlays.push({
       startSec: outStart,
       endSec: clampedEnd,
@@ -131,6 +153,9 @@ export async function resolveClipBroll(opts: {
     });
   }
 
+  console.log(
+    `[broll] ${clipId}: ${overlays.length}/${picks.length} moment(s) made it into the final clip`
+  );
   return overlays;
 }
 

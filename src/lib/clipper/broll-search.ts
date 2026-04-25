@@ -169,23 +169,86 @@ async function searchPixabay(query: string): Promise<BrollImageHit | null> {
 }
 
 /**
- * Multi-source search with type-aware ordering. Returns up to 3 candidates
- * (different sources) so the quality gate has options to pick from.
+ * Multi-source search with type-aware ordering + automatic query
+ * simplification fallback. Returns up to 3 candidates so the quality gate
+ * has options to pick from.
+ *
+ * Fallback chain: try the original query against all configured sources,
+ * then if everything came back empty, retry with a simplified query (last
+ * 2 words → last 1 word). This rescues moments where Gemma picked a
+ * brand-specific name like "Mount Dog Softbox Lighting Kit" — simplifying
+ * to "softbox" is enough to land on the Wikipedia page.
  */
 export async function searchBroll(
   query: string,
   type: "person" | "place" | "thing" | "event"
 ): Promise<BrollImageHit[]> {
-  // Wikipedia is best for named entities; Pexels/Pixabay for generic things.
-  const order: Array<() => Promise<BrollImageHit | null>> =
-    type === "person" || type === "event"
-      ? [() => searchWikipedia(query), () => searchPexels(query), () => searchPixabay(query)]
-      : type === "place"
-        ? [() => searchWikipedia(query), () => searchPexels(query), () => searchPixabay(query)]
-        : [() => searchPexels(query), () => searchPixabay(query), () => searchWikipedia(query)];
+  const queries = expandQueryWithFallbacks(query);
+  for (const q of queries) {
+    // Wikipedia is best for named entities; Pexels/Pixabay for generic things.
+    const order: Array<() => Promise<BrollImageHit | null>> =
+      type === "thing"
+        ? [() => searchPexels(q), () => searchPixabay(q), () => searchWikipedia(q)]
+        : [() => searchWikipedia(q), () => searchPexels(q), () => searchPixabay(q)];
+    const results = await Promise.all(order.map((fn) => fn().catch(() => null)));
+    const hits = results.filter((r): r is BrollImageHit => r !== null);
+    if (hits.length > 0) {
+      if (q !== query) {
+        console.log(`[broll] simplified "${query}" → "${q}" → ${hits.length} hit(s)`);
+      }
+      return hits;
+    }
+  }
+  console.log(`[broll] no hits for "${query}" (tried ${queries.length} variant(s))`);
+  return [];
+}
 
-  const results = await Promise.all(order.map((fn) => fn().catch(() => null)));
-  return results.filter((r): r is BrollImageHit => r !== null);
+/**
+ * Build progressively-simpler query variants for fallback retries.
+ *   "Mount Dog Softbox Lighting Kit" → [original, "Softbox", "Lighting"]
+ * Strategy:
+ *   1. Try the original query first (preserves multi-word entities like "Sony A7 IV").
+ *   2. If that fails, try each substantive word individually, longest-first
+ *      — head nouns like "Softbox" are usually the generic Wikipedia hit.
+ * Brand names + numbers + stop-words are filtered out to avoid garbage matches.
+ */
+function expandQueryWithFallbacks(query: string): string[] {
+  const trimmed = query.trim();
+  const out = [trimmed];
+
+  const tokens = trimmed
+    .replace(/[^\w\s'-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (tokens.length <= 1) return out;
+
+  const stopWords = new Set([
+    "the", "and", "for", "with", "from", "into", "your", "their", "his", "her",
+    "kit", "set", "thing", "stuff", "type", "way", "guy", "one", "model",
+    "system", "version", "edition", "series", "official", "best", "new",
+    "this", "that", "those", "these", "what", "when", "where", "how", "why",
+    "body", "kind", "sort",
+  ]);
+
+  // Substantive single-word candidates — drop stopwords, drop tokens that
+  // are mostly digits (model numbers like "660" or "A7"), require length > 4
+  // (very short words like "led" or "cup" can match unrelated articles).
+  const wordCandidates = tokens
+    .filter((t) => {
+      const lower = t.toLowerCase();
+      if (stopWords.has(lower)) return false;
+      if (lower.length < 5) return false;
+      if (/^\d+$/.test(t)) return false;
+      // Brand-y all-caps short words (e.g. LED, USB) caught by length-5 above
+      return true;
+    })
+    .sort((a, b) => b.length - a.length); // longest first
+
+  for (const w of wordCandidates) {
+    if (!out.includes(w)) out.push(w);
+  }
+
+  return out;
 }
 
 /**

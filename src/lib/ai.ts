@@ -553,6 +553,8 @@ ONLY pick moments with subjects that have an obvious visual representation:
 - Named PLACES ("Eiffel Tower", "Tokyo", "Mount Everest")
 - THINGS / objects ("Tesla Model S", "MacBook Pro", "ancient sword")
 - Historical EVENTS ("Apollo 11 landing", "fall of Rome")
+- Named TECHNIQUES / METHODS that have a Wikipedia article ("Rembrandt lighting", "Pomodoro technique", "Heimlich maneuver")
+- Software / tools that are widely known ("Adobe Premiere Pro", "Photoshop", "Excel")
 
 DO NOT pick:
 - Abstract concepts ("freedom", "happiness", "the economy")
@@ -561,17 +563,27 @@ DO NOT pick:
 - The speaker's own opinion or emotion
 - Anything that wouldn't have a clear single Wikipedia / stock photo result
 
-Quality over quantity. If nothing in the clip is genuinely showable, return an empty array. Pick AT MOST ${maxMoments} moments.
+CRITICAL — the search query must be SEARCHABLE on Wikipedia / stock photo sites:
+- Prefer the WELL-KNOWN GENERIC TERM over a brand-specific product name.
+  GOOD: "softbox", "studio lighting", "ring light"
+  BAD: "Mount Dog Softbox Lighting Kit", "Neewer 660 LED"
+- Prefer the COMMON NAME over a hyper-specific model.
+  GOOD: "Sony A7 IV", "iPhone 16"
+  BAD: "Sony Alpha 7 IV body only with 28-70mm kit"
+- If the speaker mentions an obscure brand AND a generic term, pick the generic.
+- 2-4 words MAX. Be ruthless.
+
+Quality over quantity. If nothing in the clip is genuinely showable with a well-known searchable term, return an empty array. Pick AT MOST ${maxMoments} moments.
 
 Output STRICT JSON only:
-{"moments": [{"startSec": <number>, "endSec": <number>, "query": "<short search phrase>", "type": "person"|"place"|"thing"|"event"}]}
+{"moments": [{"startSec": <number>, "endSec": <number>, "query": "<2-4 word search phrase>", "type": "person"|"place"|"thing"|"event"}]}
 
 Rules:
 - startSec MUST be >= ${minStart.toFixed(1)} (the hook occupies the first ${minStart}s)
 - endSec MUST be <= ${maxEnd.toFixed(1)}
 - Each moment should last 2.5–4.5 seconds
 - Spread moments out: at least 3 seconds between consecutive moments
-- "query" should be 2–5 words, optimized for search (proper nouns, no filler)
+- "query" should be 2–4 words, optimized for Wikipedia search (no filler, no brand-specific jargon)
 - No preamble, no markdown, just JSON.`;
 
   const prompt = `Clip transcript (timestamps relative to clip start):
