@@ -10,6 +10,7 @@ import {
   Clock,
   AlertCircle,
   Sparkles,
+  ExternalLink,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
@@ -35,6 +36,7 @@ export default async function DashboardPage() {
     postedThisWeek,
     failedThisWeek,
     clipsTotal,
+    postsLifetime,
     socialAccounts,
     recentPosts,
     recentClipJobs,
@@ -59,6 +61,12 @@ export default async function DashboardPage() {
     prisma.clip.count({
       where: { job: { userId: session.id } },
     }),
+    prisma.post.count({
+      where: {
+        userId: session.id,
+        status: { in: ["POSTED", "PARTIAL"] },
+      },
+    }),
     prisma.socialAccount.findMany({
       where: { userId: session.id },
       select: { platform: true, expiresAt: true, username: true },
@@ -72,6 +80,7 @@ export default async function DashboardPage() {
         caption: true,
         status: true,
         platforms: true,
+        results: true,
         createdAt: true,
       },
     }),
@@ -89,6 +98,22 @@ export default async function DashboardPage() {
       },
     }),
   ]);
+
+  // Parse per-platform URLs from each recent post's `results` JSON for the
+  // tappable link tags on the dashboard (rather than just text labels).
+  function parseLinks(raw: string | null): Map<string, string> {
+    if (!raw) return new Map();
+    try {
+      const obj = JSON.parse(raw) as Record<string, { url?: string }>;
+      const m = new Map<string, string>();
+      for (const [platform, r] of Object.entries(obj)) {
+        if (r?.url) m.set(platform, r.url);
+      }
+      return m;
+    } catch {
+      return new Map();
+    }
+  }
 
   const connectedPlatformIds = new Set(socialAccounts.map((a) => a.platform));
   const successRate =
@@ -116,7 +141,21 @@ export default async function DashboardPage() {
           {greet}, {session.name?.split(" ")[0] || "there"}
         </h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Here&apos;s what&apos;s happening with your content this week.
+          {clipsTotal === 0 && postsLifetime === 0 ? (
+            <>Here&apos;s what&apos;s happening with your content this week.</>
+          ) : (
+            <>
+              You&apos;ve made{" "}
+              <strong className="text-foreground font-medium">
+                {clipsTotal} clip{clipsTotal === 1 ? "" : "s"}
+              </strong>{" "}
+              and published{" "}
+              <strong className="text-foreground font-medium">
+                {postsLifetime} post{postsLifetime === 1 ? "" : "s"}
+              </strong>{" "}
+              to social so far.
+            </>
+          )}
         </p>
       </div>
 
@@ -250,14 +289,13 @@ export default async function DashboardPage() {
 
       {/* Recent activity */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ActivityCard
-          title="Recent posts"
-          href="/dashboard/posts"
-          empty="No posts yet — create one"
-          items={recentPosts.map((p) => ({
-            key: p.id,
-            label: p.caption.slice(0, 60) || "(no caption)",
-            sub: `${p.platforms || "no platforms"} · ${p.status.toLowerCase()}`,
+        <RecentPostsCard
+          posts={recentPosts.map((p) => ({
+            id: p.id,
+            caption: p.caption,
+            status: p.status,
+            platforms: p.platforms ? p.platforms.split(",") : [],
+            links: parseLinks(p.results),
           }))}
         />
         <ActivityCard
@@ -394,6 +432,77 @@ function StatCard({
           }`}
         />
       </div>
+    </div>
+  );
+}
+
+function RecentPostsCard({
+  posts,
+}: {
+  posts: Array<{
+    id: string;
+    caption: string;
+    status: string;
+    platforms: string[];
+    links: Map<string, string>;
+  }>;
+}) {
+  return (
+    <div className="block rounded-xl bg-card border border-border/60 p-5">
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="text-sm font-medium">Recent posts</h4>
+        <Link
+          href="/dashboard/posts"
+          className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+        >
+          See all <ArrowRight className="w-3 h-3" />
+        </Link>
+      </div>
+      {posts.length === 0 ? (
+        <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+          <Clock className="w-3 h-3" />
+          No posts yet — create one
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {posts.map((p) => (
+            <div key={p.id} className="space-y-1.5">
+              <p className="text-xs text-foreground line-clamp-2">
+                {p.caption || (
+                  <span className="text-muted-foreground">No caption</span>
+                )}
+              </p>
+              <div className="flex gap-1.5 flex-wrap">
+                {p.platforms.map((plat) => {
+                  const url = p.links.get(plat);
+                  if (url) {
+                    return (
+                      <a
+                        key={plat}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-success/10 text-success inline-flex items-center gap-1 hover:bg-success/15 transition-colors"
+                      >
+                        {plat}
+                        <ExternalLink className="w-2 h-2" />
+                      </a>
+                    );
+                  }
+                  return (
+                    <span
+                      key={plat}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-card border border-border/40 text-muted-foreground"
+                    >
+                      {plat} · {p.status.toLowerCase()}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
