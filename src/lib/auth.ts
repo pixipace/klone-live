@@ -20,17 +20,32 @@ export interface SessionUser {
 }
 
 /**
- * Authoritative admin check — reads role + banned status from DB on every
- * call so role changes / bans take effect without requiring re-login.
+ * Owner-only check — reads OWNER_EMAIL env var and matches against the
+ * session's email. Even a DB-promoted ADMIN role is blocked unless the
+ * email matches. Set OWNER_EMAIL in .env.local.
+ *
+ * Also re-reads banned status from DB so a banned owner is still blocked
+ * (defense-in-depth — shouldn't happen but).
  */
 export async function requireAdmin(): Promise<SessionUser | null> {
   const session = await getSession();
   if (!session) return null;
+
+  const ownerEmail = (process.env.OWNER_EMAIL || "").toLowerCase().trim();
+  if (!ownerEmail) {
+    console.error(
+      "[requireAdmin] OWNER_EMAIL env var not set — admin access disabled"
+    );
+    return null;
+  }
+  if (session.email.toLowerCase() !== ownerEmail) return null;
+
   const user = await prisma.user.findUnique({
     where: { id: session.id },
-    select: { role: true, banned: true },
+    select: { banned: true },
   });
-  if (!user || user.banned || user.role !== "ADMIN") return null;
+  if (!user || user.banned) return null;
+
   return session;
 }
 

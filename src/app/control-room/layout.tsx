@@ -12,6 +12,7 @@ import {
   Activity,
   Server,
   ArrowLeft,
+  Cog,
 } from "lucide-react";
 
 export default async function AdminLayout({
@@ -28,13 +29,14 @@ export default async function AdminLayout({
         <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-6">
             <span className="text-xs font-semibold text-error uppercase tracking-wider">
-              Admin
+              Owner
             </span>
             <nav className="flex items-center gap-1">
               <NavLink href="/control-room" icon={LayoutDashboard} label="Overview" />
               <NavLink href="/control-room/users" icon={Users} label="Users" />
               <NavLink href="/control-room/activity" icon={Activity} label="Activity" />
               <NavLink href="/control-room/system" icon={Server} label="System" />
+              <NavLink href="/control-room/settings" icon={Cog} label="Settings" />
             </nav>
           </div>
           <Link

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { UserActions } from "./actions";
+import { UserActions, SuperAdminControls } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -103,6 +103,9 @@ export default async function AdminUserDetailPage({
             plan: user.plan,
             role: user.role,
             banned: user.banned,
+            featureFlags: user.featureFlags,
+            maxClipsPerMonth: user.maxClipsPerMonth,
+            notes: user.notes,
           }}
         />
       </div>
@@ -113,6 +116,15 @@ export default async function AdminUserDetailPage({
         <Stat label="Posts" value={String(user._count.posts)} />
         <Stat label="Clip jobs" value={String(user._count.clipJobs)} />
       </div>
+
+      <SuperAdminControls
+        user={{
+          id: user.id,
+          featureFlags: user.featureFlags,
+          maxClipsPerMonth: user.maxClipsPerMonth,
+          notes: user.notes,
+        }}
+      />
 
       <Section title="Connected social accounts">
         {user.socialAccounts.length === 0 ? (

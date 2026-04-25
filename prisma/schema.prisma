@@ -16,6 +16,13 @@ model User {
   role           String          @default("USER")
   credits        Int             @default(0)
   banned         Boolean         @default(false)
+  /** JSON object of per-user feature flags, e.g. {"clipper":false,"posting":true}.
+    * Missing key = feature enabled (default-on). */
+  featureFlags   String?
+  /** Per-user override of monthly clip-job limit. NULL = use plan default. */
+  maxClipsPerMonth Int?
+  /** Owner-only private notes about the user. */
+  notes          String?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   socialAccounts SocialAccount[]
