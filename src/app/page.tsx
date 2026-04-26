@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Navbar } from "@/components/shared/navbar";
 import { Footer } from "@/components/shared/footer";
+import { prisma } from "@/lib/prisma";
 import {
   ArrowRight,
   Scissors,
@@ -101,7 +102,35 @@ const faq = [
   },
 ];
 
-export default function HomePage() {
+// Re-fetch platform-wide stats once an hour. Marketing numbers don't
+// need real-time freshness and we don't want to hammer the DB on every
+// homepage hit.
+export const revalidate = 3600;
+
+async function getPlatformStats() {
+  try {
+    const [clipsTotal, postsPublished, sourceMinutes] = await Promise.all([
+      prisma.clip.count(),
+      prisma.post.count({ where: { status: { in: ["POSTED", "PARTIAL"] } } }),
+      // Sum of source video minutes processed (a fun "amount of footage
+      // turned into clips" metric)
+      prisma.clipJob.aggregate({
+        where: { status: "DONE" },
+        _sum: { sourceDuration: true },
+      }),
+    ]);
+    return {
+      clipsTotal,
+      postsPublished,
+      hoursProcessed: Math.round((sourceMinutes._sum.sourceDuration ?? 0) / 3600),
+    };
+  } catch {
+    return { clipsTotal: 0, postsPublished: 0, hoursProcessed: 0 };
+  }
+}
+
+export default async function HomePage() {
+  const stats = await getPlatformStats();
   return (
     <>
       <Navbar />
@@ -331,6 +360,37 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Live platform stats — social proof. Hidden when stats are all
+          zero (early days) so we don't broadcast emptiness. */}
+      {(stats.clipsTotal > 0 || stats.postsPublished > 0) && (
+        <section className="py-16 px-6 border-t border-border/30">
+          <div className="max-w-4xl mx-auto">
+            <p className="text-center text-[10px] uppercase tracking-[0.2em] text-muted mb-8">
+              Built by creators, used by creators
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <StatTile
+                value={formatStat(stats.clipsTotal)}
+                label="cinematic clips made"
+                accent
+              />
+              <StatTile
+                value={formatStat(stats.postsPublished)}
+                label="posts published to social"
+              />
+              <StatTile
+                value={
+                  stats.hoursProcessed > 0
+                    ? `${formatStat(stats.hoursProcessed)} hr`
+                    : "—"
+                }
+                label="of source video clipped"
+              />
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* How it works (compact) */}
       <section className="py-20 px-6 border-t border-border/30">
         <div className="max-w-4xl mx-auto">
@@ -443,4 +503,46 @@ export default function HomePage() {
       <Footer />
     </>
   );
+}
+
+function StatTile({
+  value,
+  label,
+  accent,
+}: {
+  value: string;
+  label: string;
+  accent?: boolean;
+}) {
+  return (
+    <div
+      className={`relative rounded-xl border p-6 text-center overflow-hidden ${
+        accent
+          ? "border-accent/40 bg-gradient-to-br from-accent/10 via-card to-card"
+          : "border-border/60 bg-card"
+      }`}
+    >
+      {accent && (
+        <div className="absolute top-0 right-0 w-32 h-32 bg-accent/10 rounded-full blur-2xl pointer-events-none" />
+      )}
+      <div className="relative">
+        <p
+          className={`text-4xl md:text-5xl font-light tracking-tight ${
+            accent ? "text-foreground" : "text-foreground"
+          }`}
+        >
+          {value}
+        </p>
+        <p className="text-[11px] uppercase tracking-wider text-muted-foreground mt-2">
+          {label}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function formatStat(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
 }

@@ -80,6 +80,70 @@ async function cleanupOldJobs() {
   } catch (err) {
     console.warn(`[clipper-worker] cleanupSourceCache error:`, err);
   }
+
+  // Also cleanup orphan uploads — files in .uploads/ root from
+  // /api/upload that were never used in a Post (user uploaded then
+  // closed the tab without publishing). Older than 14 days = safe to
+  // assume abandoned.
+  try {
+    const orphans = await cleanupOrphanUploads();
+    if (orphans > 0) {
+      console.log(`[clipper-worker] cleaned up ${orphans} orphan upload(s) > 14d old`);
+    }
+  } catch (err) {
+    console.warn(`[clipper-worker] cleanupOrphanUploads error:`, err);
+  }
+}
+
+async function cleanupOrphanUploads() {
+  const { readdir, stat, unlink } = await import("fs/promises");
+  const uploadsDir = path.join(process.cwd(), ".uploads");
+  let removed = 0;
+  let entries: string[] = [];
+  try {
+    entries = await readdir(uploadsDir);
+  } catch {
+    return 0;
+  }
+  const cutoff = Date.now() - 14 * 86400 * 1000;
+
+  // Pull all currently-referenced mediaUrl filenames from Posts so we
+  // never delete a file that's still in a Post.mediaUrl (scheduled or
+  // even FAILED — user might retry).
+  const inUse = new Set<string>();
+  const posts = await prisma.post.findMany({
+    where: { mediaUrl: { not: null } },
+    select: { mediaUrl: true },
+  });
+  for (const p of posts) {
+    if (!p.mediaUrl) continue;
+    const m = p.mediaUrl.match(/\/api\/uploads\/([^/?]+)$/);
+    if (m) inUse.add(m[1]);
+  }
+
+  for (const name of entries) {
+    // Skip subdirs (clips/, broll-cache/, source-cache/, clipper-sources/)
+    if (
+      name === "clips" ||
+      name === "broll-cache" ||
+      name === "source-cache" ||
+      name === "clipper-sources"
+    ) {
+      continue;
+    }
+    if (inUse.has(name)) continue;
+    const filePath = path.join(uploadsDir, name);
+    try {
+      const s = await stat(filePath);
+      if (!s.isFile()) continue;
+      if (s.mtimeMs > cutoff) continue; // still recent — keep
+      await unlink(filePath);
+      removed += 1;
+    } catch {
+      // ignore — race with another cleanup is fine
+    }
+  }
+  return removed;
 }
 
 async function failStuckJobs() {
