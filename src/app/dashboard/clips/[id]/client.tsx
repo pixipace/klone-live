@@ -23,6 +23,14 @@ export type ClipDetail = {
   thumbnailPath: string | null;
   musicAttribution: string | null;
   publicShareEnabled: boolean;
+  /** Per-platform post status — live = published, scheduled = queued,
+   *  failed = errored. Lets the user see at a glance what's posted vs
+   *  pending without leaving the clip detail page. */
+  postStatus: {
+    live: string[];
+    scheduled: string[];
+    failed: string[];
+  };
 };
 
 export type JobDetail = {
@@ -34,6 +42,62 @@ export type JobDetail = {
   highlightReelHook: string | null;
   clips: ClipDetail[];
 };
+
+/**
+ * Compact pill showing where a clip already lives vs what's still pending.
+ * Three buckets: live (POSTED/PARTIAL), scheduled (SCHEDULED/POSTING),
+ * failed. Renders the highest-priority state visibly + the others as a
+ * subtle hover/tooltip-friendly dot strip.
+ */
+function ClipPostStatus({
+  status,
+}: {
+  status: { live: string[]; scheduled: string[]; failed: string[] };
+}) {
+  const liveCount = status.live.length;
+  const schedCount = status.scheduled.length;
+  const failedCount = status.failed.length;
+
+  if (liveCount === 0 && schedCount === 0 && failedCount === 0) {
+    return (
+      <span className="text-[10px] px-1.5 py-0.5 rounded bg-card border border-border/40 text-muted">
+        Not posted
+      </span>
+    );
+  }
+
+  return (
+    <div className="inline-flex items-center gap-1.5 flex-wrap">
+      {liveCount > 0 && (
+        <span
+          title={`Live on: ${status.live.join(", ")}`}
+          className="text-[10px] px-1.5 py-0.5 rounded bg-success/15 text-success font-medium inline-flex items-center gap-1"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-success" />
+          Live · {status.live.join(", ")}
+        </span>
+      )}
+      {schedCount > 0 && (
+        <span
+          title={`Scheduled for: ${status.scheduled.join(", ")}`}
+          className="text-[10px] px-1.5 py-0.5 rounded bg-accent/15 text-accent font-medium inline-flex items-center gap-1"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+          Scheduled · {status.scheduled.join(", ")}
+        </span>
+      )}
+      {failedCount > 0 && (
+        <span
+          title={`Failed on: ${status.failed.join(", ")}`}
+          className="text-[10px] px-1.5 py-0.5 rounded bg-error/15 text-error font-medium inline-flex items-center gap-1"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-error" />
+          Failed · {status.failed.join(", ")}
+        </span>
+      )}
+    </div>
+  );
+}
 
 function TrimDialog({
   jobId,
@@ -853,10 +917,13 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
           {job.clips.map((clip, i) => (
             <Card key={clip.id} className="p-4 space-y-3">
               <div className="flex items-start justify-between gap-2">
-                <span className="text-xs text-muted-foreground">
-                  Clip {i + 1}
-                </span>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                  <span className="text-xs text-muted-foreground">
+                    Clip {i + 1}
+                  </span>
+                  <ClipPostStatus status={clip.postStatus} />
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
                   <Flame
                     className={`w-3.5 h-3.5 ${clip.viralityScore >= 8 ? "text-warning" : "text-muted"}`}
                   />
