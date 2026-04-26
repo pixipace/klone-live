@@ -66,8 +66,22 @@ export async function pickClips(
 ): Promise<ClipPick[]> {
   const transcript = formatSegments(segments);
 
+  // User guidance is authoritative — when present, it OVERRIDES the
+  // default viral-only framing. Useful for content where the user wants
+  // comprehensive event extraction (e.g. "every wicket", "all goals",
+  // "each tutorial step"), not just the moments that look viral in
+  // isolation. Without this, the picker would skip routine cricket
+  // wickets that lack a hook+payoff arc.
   const guidanceBlock = guidance && guidance.trim().length > 0
-    ? `\n\nUSER'S GUIDANCE (treat as additional rules — they know their content best):\n${guidance.trim().slice(0, 500)}\n`
+    ? `
+
+USER'S GUIDANCE (THIS OVERRIDES the default rules above — the user knows their content and audience best):
+"${guidance.trim().slice(0, 500)}"
+
+If the user's guidance specifies a SPECIFIC event type or content category to find (e.g. "every wicket", "all goals", "each tutorial step", "all questions asked"), find ALL instances of that — even ones that don't look "viral" by the default rules. The user's intent overrides the viral-only framing.
+
+If the user's guidance is a STYLE preference (e.g. "focus on storytelling", "skip self-promo"), use it to filter the viral-style picks the default rules would have made.
+`
     : "";
 
   const userPrompt = `Source: "${sourceTitle}"${guidanceBlock}

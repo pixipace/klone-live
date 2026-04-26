@@ -446,12 +446,16 @@ export default function ClipsPage() {
           <textarea
             value={guidance}
             onChange={(e) => setGuidance(e.target.value.slice(0, 500))}
-            placeholder='e.g. "focus on storytelling moments", "skip self-promo", "find tactical advice clips only"'
+            placeholder='e.g. "find every wicket moment", "all goals + reactions", "focus on storytelling", "skip self-promo", "each tutorial step"'
             rows={2}
             className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-accent/40 resize-none"
           />
           <p className="text-[10px] text-muted mt-1">
-            Steers the AI picker for THIS job. {500 - guidance.length} chars left.
+            Steers the AI picker for THIS job. Specific event types
+            (&ldquo;every wicket&rdquo;, &ldquo;all goals&rdquo;) override
+            the default viral filter and find ALL instances. Style notes
+            (&ldquo;skip self-promo&rdquo;) filter the existing picks.{" "}
+            {500 - guidance.length} chars left.
           </p>
         </div>
         <p className="text-[11px] text-muted-foreground mt-3">
@@ -695,7 +699,7 @@ export default function ClipsPage() {
                       defaultHashtags: e.target.value,
                     })
                   }
-                  placeholder="#cricket #ipl #pakistancricket"
+                  placeholder="#yourniche #yourbrand #channelname"
                   className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40 font-mono"
                 />
                 <p className="text-[10px] text-muted mt-1">
