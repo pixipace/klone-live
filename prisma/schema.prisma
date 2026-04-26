@@ -141,6 +141,13 @@ model Clip {
   musicAttribution String?
   brollMoments     String?
   posted           Boolean  @default(false)
+  /** Opt-in public showcase. When true, the clip is viewable at
+    * klone.live/c/{id} without auth + the video file is served via
+    * /api/public-clips/{id}/* without an owner session. */
+  publicShareEnabled Boolean @default(false)
+  /** Snapshot view counter for the public page. Bumps on each unique-ish
+    * pageview (incremented server-side, not strict-unique). */
+  publicViews        Int     @default(0)
   createdAt        DateTime @default(now())
 
   @@index([jobId])

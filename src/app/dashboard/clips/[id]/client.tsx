@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, ExternalLink, Flame, Clock, Send, Sparkles, Check, Pencil, Save, X, RotateCcw, Zap, Loader2, RefreshCcw, Scissors, Film } from "lucide-react";
+import { ShareButton } from "./share-button";
 
 export type ClipDetail = {
   id: string;
@@ -21,6 +22,7 @@ export type ClipDetail = {
   videoPath: string | null;
   thumbnailPath: string | null;
   musicAttribution: string | null;
+  publicShareEnabled: boolean;
 };
 
 export type JobDetail = {
@@ -953,6 +955,11 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
                       <Scissors className="w-3.5 h-3.5" />
                       Trim
                     </button>
+                    <ShareButton
+                      jobId={job.id}
+                      clipId={clip.id}
+                      initialEnabled={clip.publicShareEnabled}
+                    />
                   </>
                 ) : (
                   <Badge variant="default">Video processing…</Badge>

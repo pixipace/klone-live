@@ -55,6 +55,7 @@ export default async function ClipJobDetail({
             videoPath: c.videoPath,
             thumbnailPath: c.thumbnailPath,
             musicAttribution: c.musicAttribution,
+            publicShareEnabled: c.publicShareEnabled,
           };
         }),
       }}
