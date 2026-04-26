@@ -21,6 +21,7 @@ export async function GET() {
       clipperTimezone: true,
       clipperCaptionStyle: true,
       clipperEndCardText: true,
+      clipperDefaultHashtags: true,
     },
   });
   if (!user) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -36,6 +37,7 @@ export async function GET() {
     timezone: user.clipperTimezone,
     captionStyle: user.clipperCaptionStyle || "classic",
     endCardText: user.clipperEndCardText || "",
+    defaultHashtags: user.clipperDefaultHashtags || "",
   });
 }
 
@@ -53,6 +55,7 @@ export async function PATCH(request: NextRequest) {
     timezone?: string | null;
     captionStyle?: string;
     endCardText?: string | null;
+    defaultHashtags?: string | null;
   };
 
   const data: {
@@ -64,6 +67,7 @@ export async function PATCH(request: NextRequest) {
     clipperTimezone?: string | null;
     clipperCaptionStyle?: string;
     clipperEndCardText?: string | null;
+    clipperDefaultHashtags?: string | null;
   } = {};
 
   if (typeof body.autoPublish === "boolean") {
@@ -96,6 +100,20 @@ export async function PATCH(request: NextRequest) {
   if (body.endCardText === null || typeof body.endCardText === "string") {
     const t = body.endCardText?.trim() ?? "";
     data.clipperEndCardText = t.length > 0 ? t.slice(0, 60) : null;
+  }
+  if (body.defaultHashtags === null || typeof body.defaultHashtags === "string") {
+    const cleaned = (body.defaultHashtags ?? "")
+      .split(/[\s,]+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0)
+      // Normalize: ensure each starts with #, lowercase, drop non-tag chars
+      .map((t) => {
+        const withHash = t.startsWith("#") ? t : `#${t}`;
+        return withHash.replace(/[^#\w]/g, "");
+      })
+      .filter((t) => t.length > 1)
+      .slice(0, 30); // sanity cap — no one needs 30 default tags
+    data.clipperDefaultHashtags = cleaned.length > 0 ? cleaned.join(" ") : null;
   }
 
   // Guard: if user enabled auto-publish, they must have at least one platform

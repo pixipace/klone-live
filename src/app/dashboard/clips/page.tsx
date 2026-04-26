@@ -51,6 +51,7 @@ type PublishPrefs = {
   timezone: string | null;
   captionStyle: "classic" | "bold" | "minimal";
   endCardText: string;
+  defaultHashtags: string;
 };
 
 const CAPTION_STYLES = [
@@ -145,6 +146,7 @@ export default function ClipsPage() {
             ? data.captionStyle
             : "classic") as "classic" | "bold" | "minimal",
           endCardText: typeof data.endCardText === "string" ? data.endCardText : "",
+          defaultHashtags: typeof data.defaultHashtags === "string" ? data.defaultHashtags : "",
         });
       }
     } catch {
@@ -676,6 +678,31 @@ export default function ClipsPage() {
                 <p className="text-[10px] text-muted mt-1">
                   Shown over the last 1.5 seconds of every clip with{" "}
                   &ldquo;more like this&rdquo; below it. Leave empty to skip.
+                </p>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                  Always-include hashtags{" "}
+                  <span className="text-muted font-normal">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={prefs.defaultHashtags}
+                  onChange={(e) =>
+                    setPrefs({
+                      ...prefs,
+                      defaultHashtags: e.target.value,
+                    })
+                  }
+                  placeholder="#cricket #ipl #pakistancricket"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40 font-mono"
+                />
+                <p className="text-[10px] text-muted mt-1">
+                  These get prepended to the AI-generated tags on every
+                  auto-published post. Comma- or space-separated, # is optional
+                  (auto-added). Use this when you want every clip to land in a
+                  specific niche feed regardless of what the AI picks.
                 </p>
               </div>
 

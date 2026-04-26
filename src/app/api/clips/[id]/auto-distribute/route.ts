@@ -77,6 +77,16 @@ export async function POST(
     );
   }
 
+  // User's saved default hashtags get prepended to AI tags per (clip × platform)
+  const user = await prisma.user.findUnique({
+    where: { id: session.id },
+    select: { clipperDefaultHashtags: true },
+  });
+  const userHashtags = (user?.clipperDefaultHashtags ?? "")
+    .split(/[\s,]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+
   const result = await autoDistributeClips({
     userId: session.id,
     clips: job.clips,
@@ -84,6 +94,7 @@ export async function POST(
     clipsPerDay: cadence,
     skipWeekends,
     withAiHashtags,
+    userHashtags,
   });
 
   return NextResponse.json({

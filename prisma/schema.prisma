@@ -38,6 +38,10 @@ model User {
   /** Optional handle/text shown as branded end card on last ~1.5s of each
     * clip (e.g. "@gillpixipace"). Empty/null disables the end card. */
   clipperEndCardText     String?
+  /** User's default hashtags (comma-separated, with or without #). Always
+    * prepended to AI-generated tags during auto-distribute, deduplicated,
+    * capped at platform's max count. Empty = AI tags only. */
+  clipperDefaultHashtags String?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   socialAccounts      SocialAccount[]

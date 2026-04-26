@@ -8,6 +8,14 @@ import { ALL_PLATFORMS, type PlatformId } from "@/lib/platforms";
 
 const PLATFORM_SET = new Set<string>(ALL_PLATFORMS);
 
+function parseTagList(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(/[\s,]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+}
+
 const POLL_INTERVAL_MS = 10_000;
 // Bumped from 30min → 3hr to support 2-3hr source videos. Whisper alone
 // can take 60-90 min on a 3hr source; full pipeline (including chunked
@@ -137,6 +145,7 @@ async function maybeAutoPublish(jobId: string): Promise<void> {
           clipperClipsPerDay: true,
           clipperSkipWeekends: true,
           clipperWithAiHashtags: true,
+          clipperDefaultHashtags: true,
         },
       },
       clips: true,
@@ -160,6 +169,7 @@ async function maybeAutoPublish(jobId: string): Promise<void> {
   if (renderedClips.length === 0) return;
 
   try {
+    const userHashtags = parseTagList(job.user.clipperDefaultHashtags);
     const result = await autoDistributeClips({
       userId: job.user.id,
       clips: renderedClips,
@@ -167,6 +177,7 @@ async function maybeAutoPublish(jobId: string): Promise<void> {
       clipsPerDay: job.user.clipperClipsPerDay,
       skipWeekends: job.user.clipperSkipWeekends,
       withAiHashtags: job.user.clipperWithAiHashtags,
+      userHashtags,
     });
     console.log(
       `[clipper-worker] auto-published ${jobId}: ${result.scheduled} post(s) across ${platforms.length} platform(s)`

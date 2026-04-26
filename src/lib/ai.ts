@@ -272,7 +272,8 @@ Rewrite it now.`;
 export async function suggestHashtags(
   caption: string,
   platform: Platform,
-  count: number = 8
+  count: number = 8,
+  context?: { transcript?: string }
 ): Promise<string[]> {
   const platformCount: Record<Platform, number> = {
     facebook: 2,
@@ -285,19 +286,29 @@ export async function suggestHashtags(
 
   const system = `You suggest hashtags that real people search and use — NOT generic SEO bait. Output a JSON array of strings only — no preamble, no markdown, no commentary.
 
+CRITICAL — TOPIC ACCURACY OVER POPULARITY:
+- Read the transcript carefully and identify the ACTUAL topic. Cricket clips need cricket hashtags. Cooking clips need cooking hashtags. NEVER suggest tags from a different domain.
+- If you're unsure of the topic, return fewer hashtags rather than guessing wrong. A wrong hashtag is much worse than no hashtag — it puts the post in front of the wrong audience and tanks reach.
+- If the source mentions specific names (athletes, teams, products, places, events), prefer hashtags that include those proper nouns — they're discoverable and accurate.
+
 Rules:
-- Mix: 30% broad (high-volume), 70% niche (low-volume but targeted)
+- Mix: 30% broad (high-volume topic tag), 70% niche (specific to the actual subject)
 - For ${platform}, use exactly ${targetCount} hashtags
-- Each starts with #, no spaces, lowercase preferred
-- NEVER use these tired hashtags: #love #instagood #photooftheday #beautiful #happy #fashion #picoftheday #follow #like4like #instadaily — they're noise
+- Each starts with #, no spaces, lowercase preferred (proper-noun tags can keep capitals like #ViratKohli)
+- NEVER use generic noise: #love #instagood #photooftheday #beautiful #happy #fashion #picoftheday #follow #like4like #instadaily
+- DO NOT include #shorts unless platform is youtube (it's irrelevant elsewhere and looks lazy)
 - Match the actual content, not the platform name (don't suggest #instagram on instagram)`;
 
-  const prompt = `Caption:
+  const transcriptBlock = context?.transcript
+    ? `\n\nTranscript (THE PRIMARY SIGNAL — read this carefully to identify the actual topic):\n"""\n${context.transcript.slice(0, 1500)}\n"""`
+    : "";
+
+  const prompt = `Caption / hook:
 """
 ${caption}
-"""
+"""${transcriptBlock}
 
-Output a JSON array of ${targetCount} hashtags: ["#tag1", "#tag2", ...]`;
+Identify the actual topic from the transcript above. Output a JSON array of ${targetCount} accurate, topic-matched hashtags: ["#tag1", "#tag2", ...]`;
 
   const raw = await generate(prompt, system, {
     temperature: 0.4,
