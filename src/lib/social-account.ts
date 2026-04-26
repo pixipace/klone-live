@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { encryptToken } from "@/lib/token-crypto";
 
 export type Platform = "tiktok" | "facebook" | "instagram" | "linkedin" | "youtube";
 
@@ -20,6 +21,14 @@ export async function upsertSocialAccountForCurrentUser(
   const session = await getSession();
   if (!session) return { ok: false, reason: "no_session" };
 
+  // Encrypt at rest. Reads happen via decryptSocialAccount() / refresh.ts
+  // which transparently decrypt. v1: prefix marks encrypted values; legacy
+  // plaintext rows still work until the migration runs.
+  const accessTokenEnc = encryptToken(data.accessToken);
+  const refreshTokenEnc = data.refreshToken
+    ? encryptToken(data.refreshToken)
+    : null;
+
   await prisma.socialAccount.upsert({
     where: {
       userId_platform: { userId: session.id, platform: data.platform },
@@ -27,8 +36,8 @@ export async function upsertSocialAccountForCurrentUser(
     create: {
       userId: session.id,
       platform: data.platform,
-      accessToken: data.accessToken,
-      refreshToken: data.refreshToken ?? null,
+      accessToken: accessTokenEnc,
+      refreshToken: refreshTokenEnc,
       expiresAt: data.expiresAt ?? null,
       externalId: data.externalId ?? null,
       username: data.username ?? null,
@@ -36,8 +45,8 @@ export async function upsertSocialAccountForCurrentUser(
       meta: data.meta ? JSON.stringify(data.meta) : null,
     },
     update: {
-      accessToken: data.accessToken,
-      refreshToken: data.refreshToken ?? null,
+      accessToken: accessTokenEnc,
+      refreshToken: refreshTokenEnc,
       expiresAt: data.expiresAt ?? null,
       externalId: data.externalId ?? null,
       username: data.username ?? null,

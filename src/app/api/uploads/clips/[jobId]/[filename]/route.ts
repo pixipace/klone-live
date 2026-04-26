@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile, stat } from "fs/promises";
 import path from "path";
+import { getSession } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 const mimeTypes: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -10,22 +12,40 @@ const mimeTypes: Record<string, string> = {
   ".mp4": "video/mp4",
 };
 
+/**
+ * Serve clip media at .uploads/clips/{jobId}/{filename}. Auth + ownership
+ * required: session user must own the ClipJob the file belongs to.
+ */
 export async function GET(
   _request: NextRequest,
-  context: RouteContext<"/api/uploads/clips/[jobId]/[filename]">
+  context: { params: Promise<{ jobId: string; filename: string }> }
 ) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const { jobId, filename } = await context.params;
+
+  if (
+    jobId.includes("..") ||
+    jobId.includes("/") ||
+    filename.includes("..") ||
+    filename.includes("/")
+  ) {
+    return NextResponse.json({ error: "Invalid path" }, { status: 400 });
+  }
+
+  // Ownership check: ClipJob must belong to session user
+  const job = await prisma.clipJob.findFirst({
+    where: { id: jobId, userId: session.id },
+    select: { id: true },
+  });
+  if (!job) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   try {
-    const { jobId, filename } = await context.params;
-
-    if (
-      jobId.includes("..") ||
-      jobId.includes("/") ||
-      filename.includes("..") ||
-      filename.includes("/")
-    ) {
-      return NextResponse.json({ error: "Invalid path" }, { status: 400 });
-    }
-
     const filepath = path.join(process.cwd(), ".uploads", "clips", jobId, filename);
     await stat(filepath);
     const buffer = await readFile(filepath);
@@ -36,10 +56,10 @@ export async function GET(
     return new NextResponse(buffer as unknown as BodyInit, {
       headers: {
         "Content-Type": contentType,
-        "Cache-Control": "public, max-age=31536000",
+        "Cache-Control": "private, max-age=300",
       },
     });
   } catch {
-    return NextResponse.json({ error: "File not found" }, { status: 404 });
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 }
