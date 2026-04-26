@@ -100,6 +100,37 @@ export function UserActions({
       </Button>
       <Button
         size="sm"
+        variant="outline"
+        onClick={async () => {
+          if (!confirm(`Impersonate ${user.email}? You'll be logged in as them; banner lets you exit.`)) return;
+          setBusy("impersonate");
+          try {
+            const res = await fetch(`/api/control-room/impersonate/${user.id}`, {
+              method: "POST",
+            });
+            const data = await res.json();
+            if (res.ok) {
+              window.location.href = data.redirectTo || "/dashboard";
+            } else {
+              alert(data.error || "Impersonate failed");
+              setBusy(null);
+            }
+          } catch (err) {
+            alert(String(err).slice(0, 200));
+            setBusy(null);
+          }
+        }}
+        disabled={busy !== null || user.banned}
+        title={user.banned ? "Unban first" : "Log in as this user (audit-logged)"}
+      >
+        {busy === "impersonate" ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        ) : (
+          "Impersonate"
+        )}
+      </Button>
+      <Button
+        size="sm"
         variant="danger"
         onClick={deleteUser}
         disabled={busy !== null}

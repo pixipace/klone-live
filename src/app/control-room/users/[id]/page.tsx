@@ -33,7 +33,7 @@ export default async function AdminUserDetailPage({
 
   if (!user) notFound();
 
-  const [recentPosts, recentClipJobs] = await Promise.all([
+  const [recentPosts, recentClipJobs, adminActionsOnUser] = await Promise.all([
     prisma.post.findMany({
       where: { userId: id },
       orderBy: { createdAt: "desc" },
@@ -58,6 +58,13 @@ export default async function AdminUserDetailPage({
         createdAt: true,
         _count: { select: { clips: true } },
       },
+    }),
+    // Admin-action history scoped to THIS user — surfaces support context
+    // (e.g. "this user was banned 3 days ago by Y, then unbanned today")
+    prisma.adminAuditLog.findMany({
+      where: { targetId: id },
+      orderBy: { createdAt: "desc" },
+      take: 10,
     }),
   ]);
 
@@ -221,6 +228,39 @@ export default async function AdminUserDetailPage({
                 </p>
               </div>
             ))}
+          </div>
+        )}
+      </Section>
+
+      <Section title="Admin actions on this user">
+        {adminActionsOnUser.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No admin actions yet.</p>
+        ) : (
+          <div className="space-y-1">
+            {adminActionsOnUser.map((a) => (
+              <div
+                key={a.id}
+                className="px-3 py-2 rounded-lg bg-card border border-border/40 text-xs flex items-center justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <span className="font-medium">{a.action}</span>
+                  {a.details && (
+                    <span className="text-muted-foreground ml-2 truncate inline-block max-w-md align-middle">
+                      {a.details}
+                    </span>
+                  )}
+                </div>
+                <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                  {a.adminEmail} · {a.createdAt.toLocaleString()}
+                </span>
+              </div>
+            ))}
+            <Link
+              href={`/control-room/audit?target=${user.id}`}
+              className="text-[11px] text-accent hover:underline inline-block mt-2"
+            >
+              See full audit history for this user →
+            </Link>
           </div>
         )}
       </Section>

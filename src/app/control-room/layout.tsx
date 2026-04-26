@@ -13,6 +13,7 @@ import {
   Server,
   ArrowLeft,
   Cog,
+  ScrollText,
 } from "lucide-react";
 
 export default async function AdminLayout({
@@ -36,6 +37,7 @@ export default async function AdminLayout({
               <NavLink href="/control-room/users" icon={Users} label="Users" />
               <NavLink href="/control-room/activity" icon={Activity} label="Activity" />
               <NavLink href="/control-room/system" icon={Server} label="System" />
+              <NavLink href="/control-room/audit" icon={ScrollText} label="Audit log" />
               <NavLink href="/control-room/settings" icon={Cog} label="Settings" />
             </nav>
           </div>

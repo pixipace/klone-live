@@ -2,6 +2,7 @@ import { spawn } from "child_process";
 import { stat } from "fs/promises";
 import path from "path";
 import { prisma } from "@/lib/prisma";
+import { CacheControls, LogTail, SystemToolsHeader } from "./system-tools";
 
 export const dynamic = "force-dynamic";
 
@@ -171,6 +172,20 @@ export default async function AdminSystemPage() {
             ))}
           </div>
         )}
+      </Section>
+
+      <Section title="Power tools">
+        <SystemToolsHeader />
+        <div className="space-y-4">
+          <div>
+            <p className="text-xs text-muted-foreground mb-2">Cache management</p>
+            <CacheControls />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground mb-2">Server logs (live tail)</p>
+            <LogTail />
+          </div>
+        </div>
       </Section>
     </div>
   );

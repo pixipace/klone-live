@@ -5,7 +5,13 @@ import { usePathname } from "next/navigation";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 
-export function DashboardShell({ children }: { children: React.ReactNode }) {
+export function DashboardShell({
+  children,
+  impersonationBanner,
+}: {
+  children: React.ReactNode;
+  impersonationBanner?: React.ReactNode;
+}) {
   const [navOpen, setNavOpen] = useState(false);
   const pathname = usePathname();
 
@@ -37,6 +43,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
 
       <div className="md:ml-[220px]">
+        {impersonationBanner}
         <Topbar onMenuClick={() => setNavOpen(true)} />
         <main className="p-4 md:p-6 max-w-6xl">{children}</main>
       </div>

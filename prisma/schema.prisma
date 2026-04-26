@@ -50,6 +50,30 @@ model User {
   passwordResetTokens PasswordResetToken[]
 }
 
+/// Append-only log of every action taken from /control-room. Used for
+/// security accountability + post-incident investigation. Never deleted.
+model AdminAuditLog {
+  id          String   @id @default(cuid())
+  /// The admin's email at the time of the action (denormalized — admin
+  /// identity comes from OWNER_EMAIL env var, not a foreign key).
+  adminEmail  String
+  /// Action key: e.g. "user.ban", "user.unban", "user.delete",
+  /// "user.setPlan", "user.impersonate", "cache.clear", "worker.pause"
+  action      String
+  /// Subject of the action — usually a userId, but could be a cache key,
+  /// job id, etc. Free text.
+  targetId    String?
+  /// Free-form JSON for action-specific details (old → new values, etc).
+  details     String?
+  /// Source IP (best-effort — from cf-connecting-ip / x-forwarded-for).
+  ip          String?
+  createdAt   DateTime @default(now())
+
+  @@index([adminEmail, createdAt])
+  @@index([action, createdAt])
+  @@index([targetId])
+}
+
 model PasswordResetToken {
   id        String    @id @default(cuid())
   userId    String
