@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
@@ -17,11 +18,34 @@ import {
   X,
 } from "lucide-react";
 
-const navItems = [
+type BadgeKey = "failedPosts" | "runningClips" | "scheduledPosts";
+type NavBadge = {
+  key: BadgeKey;
+  /** "warning" pulses red (needs attention), "info" is neutral. */
+  variant: "warning" | "info";
+};
+
+const navItems: Array<{
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  /** Which badge value to render at the right side of this nav item. */
+  badge?: NavBadge;
+}> = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/create", label: "New post", icon: PenSquare },
-  { href: "/dashboard/clips", label: "Clip Studio", icon: Scissors },
-  { href: "/dashboard/posts", label: "My posts", icon: Calendar },
+  {
+    href: "/dashboard/clips",
+    label: "Clip Studio",
+    icon: Scissors,
+    badge: { key: "runningClips", variant: "info" },
+  },
+  {
+    href: "/dashboard/posts",
+    label: "My posts",
+    icon: Calendar,
+    badge: { key: "failedPosts", variant: "warning" },
+  },
   { href: "/dashboard/insights", label: "Stats", icon: BarChart3 },
   { href: "/dashboard/comments", label: "Comments", icon: MessageCircle },
   { href: "/dashboard/accounts", label: "Connected apps", icon: Users },
@@ -36,6 +60,33 @@ interface SidebarProps {
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const [counts, setCounts] = useState<Record<BadgeKey, number>>({
+    failedPosts: 0,
+    runningClips: 0,
+    scheduledPosts: 0,
+  });
+
+  // Poll counts on mount + every 30s + after route change. Lightweight
+  // query (3 prisma counts) so this is cheap even on slow connections.
+  useEffect(() => {
+    let cancelled = false;
+    const fetchCounts = async () => {
+      try {
+        const res = await fetch("/api/dashboard/counts");
+        if (!res.ok) return;
+        const data = (await res.json()) as Record<BadgeKey, number>;
+        if (!cancelled) setCounts(data);
+      } catch {
+        // ignore — badge stays stale
+      }
+    };
+    fetchCounts();
+    const t = setInterval(fetchCounts, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [pathname]);
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -110,6 +161,18 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                 )}
               />
               <span className="relative z-10">{item.label}</span>
+              {item.badge && counts[item.badge.key] > 0 && (
+                <span
+                  className={cn(
+                    "ml-auto relative z-10 text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none",
+                    item.badge.variant === "warning"
+                      ? "bg-error/15 text-error"
+                      : "bg-accent/15 text-accent"
+                  )}
+                >
+                  {counts[item.badge.key]}
+                </span>
+              )}
             </Link>
           );
         })}

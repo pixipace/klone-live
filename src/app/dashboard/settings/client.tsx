@@ -32,6 +32,7 @@ export function SettingsClient({
     plan: string;
     notifyOnPost: boolean;
     audienceTimezone: string | null;
+    weeklyDigestEnabled: boolean;
   };
 }) {
   const router = useRouter();
@@ -40,6 +41,7 @@ export function SettingsClient({
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
   const [notifyOnPost, setNotifyOnPost] = useState(user.notifyOnPost);
+  const [weeklyDigest, setWeeklyDigest] = useState(user.weeklyDigestEnabled);
   const [tz, setTz] = useState(user.audienceTimezone ?? "");
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [prefsSaved, setPrefsSaved] = useState(false);
@@ -73,6 +75,7 @@ export function SettingsClient({
         body: JSON.stringify({
           notifyOnPost,
           audienceTimezone: tz || null,
+          weeklyDigestEnabled: weeklyDigest,
         }),
       });
       if (res.ok) {
@@ -139,6 +142,22 @@ export function SettingsClient({
               <p className="text-xs text-muted-foreground mt-0.5">
                 One email per scheduled post that goes live, with the
                 published links.
+              </p>
+            </div>
+          </label>
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={weeklyDigest}
+              onChange={(e) => setWeeklyDigest(e.target.checked)}
+              className="accent-accent mt-1"
+            />
+            <div>
+              <p className="text-sm font-medium">Weekly digest email</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Monday-morning recap: clips made + posts published that week,
+                plus your top-performing post by views. Skipped weeks where
+                you had zero activity.
               </p>
             </div>
           </label>

@@ -11,7 +11,11 @@ export default async function SettingsPage() {
 
   const user = await prisma.user.findUnique({
     where: { id: session.id },
-    select: { notifyOnPost: true, audienceTimezone: true },
+    select: {
+      notifyOnPost: true,
+      audienceTimezone: true,
+      weeklyDigestEnabled: true,
+    },
   });
 
   return (
@@ -23,6 +27,7 @@ export default async function SettingsPage() {
         plan: session.plan,
         notifyOnPost: user?.notifyOnPost ?? true,
         audienceTimezone: user?.audienceTimezone ?? null,
+        weeklyDigestEnabled: user?.weeklyDigestEnabled ?? true,
       }}
     />
   );

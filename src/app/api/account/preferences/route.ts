@@ -9,13 +9,20 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body = await request.json();
-  const data: { notifyOnPost?: boolean; audienceTimezone?: string | null } = {};
+  const data: {
+    notifyOnPost?: boolean;
+    audienceTimezone?: string | null;
+    weeklyDigestEnabled?: boolean;
+  } = {};
 
   if (typeof body.notifyOnPost === "boolean") {
     data.notifyOnPost = body.notifyOnPost;
   }
   if (typeof body.audienceTimezone === "string" || body.audienceTimezone === null) {
     data.audienceTimezone = body.audienceTimezone;
+  }
+  if (typeof body.weeklyDigestEnabled === "boolean") {
+    data.weeklyDigestEnabled = body.weeklyDigestEnabled;
   }
 
   if (Object.keys(data).length === 0) {
