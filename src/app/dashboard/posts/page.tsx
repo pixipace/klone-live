@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Calendar, PenSquare, ExternalLink, AlertCircle } from "lucide-react";
+import { Calendar, PenSquare, ExternalLink, AlertCircle, Search } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -9,6 +9,18 @@ import { format, isToday, isYesterday, startOfWeek, isAfter, formatDistanceToNow
 import { RetryButton } from "./retry-button";
 import { CancelScheduledButton } from "./cancel-scheduled-button";
 import { MetricsRow } from "./metrics-row";
+import { DeleteButton } from "./delete-button";
+
+const PLATFORMS_FILTER = [
+  { id: "all", label: "All platforms" },
+  { id: "youtube", label: "YouTube" },
+  { id: "instagram", label: "Instagram" },
+  { id: "facebook", label: "Facebook" },
+  { id: "tiktok", label: "TikTok" },
+  { id: "linkedin", label: "LinkedIn" },
+] as const;
+
+const PAGE_SIZE = 50;
 
 const FETCHABLE_PLATFORMS = new Set(["youtube", "instagram"]);
 
@@ -75,7 +87,12 @@ function thumbFromMediaUrl(mediaUrl: string | null): string | null {
 export default async function PostsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string }>;
+  searchParams: Promise<{
+    filter?: string;
+    platform?: string;
+    q?: string;
+    page?: string;
+  }>;
 }) {
   const session = await getSession();
   if (!session) redirect("/login");
@@ -83,18 +100,52 @@ export default async function PostsPage({
   const sp = await searchParams;
   const filter = (FILTERS.find((f) => f.id === sp.filter)?.id ?? "all") as FilterId;
   const filterDef = FILTERS.find((f) => f.id === filter)!;
+  const platformFilter = PLATFORMS_FILTER.find((p) => p.id === sp.platform)?.id ?? "all";
+  const search = (sp.q ?? "").trim().slice(0, 100);
+  const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
-  const posts = await prisma.post.findMany({
-    where: {
-      userId: session.id,
-      ...(filterDef.statuses && { status: { in: [...filterDef.statuses] } }),
-    },
-    orderBy:
-      filter === "scheduled"
-        ? { scheduledFor: "asc" }
-        : { createdAt: "desc" },
-    take: 200,
-  });
+  // Build where clause: status filter + platform substring + caption contains
+  const where = {
+    userId: session.id,
+    ...(filterDef.statuses && { status: { in: [...filterDef.statuses] } }),
+    ...(platformFilter !== "all" && {
+      platforms: { contains: platformFilter as string },
+    }),
+    ...(search && {
+      caption: { contains: search },
+    }),
+  };
+
+  const [posts, totalMatching] = await Promise.all([
+    prisma.post.findMany({
+      where,
+      orderBy:
+        filter === "scheduled"
+          ? { scheduledFor: "asc" }
+          : { createdAt: "desc" },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }),
+    prisma.post.count({ where }),
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(totalMatching / PAGE_SIZE));
+
+  // Helper to build URLs preserving the other params
+  function buildUrl(overrides: Partial<{ filter: string; platform: string; q: string; page: string }>) {
+    const params = new URLSearchParams();
+    const next = {
+      filter: overrides.filter ?? (filter === "all" ? undefined : filter),
+      platform: overrides.platform ?? (platformFilter === "all" ? undefined : platformFilter),
+      q: overrides.q ?? (search || undefined),
+      page: overrides.page ?? (page > 1 ? String(page) : undefined),
+    };
+    for (const [k, v] of Object.entries(next)) {
+      if (v) params.set(k, v);
+    }
+    const qs = params.toString();
+    return qs ? `/dashboard/posts?${qs}` : "/dashboard/posts";
+  }
 
   // Pre-compute per-filter counts for the tab bar so each tab shows its size
   const counts = await prisma.post.groupBy({
@@ -141,6 +192,52 @@ export default async function PostsPage({
         </Link>
       </div>
 
+      {/* Search + platform filter — server-rendered form with GET so URL
+          stays shareable + browser back button works as expected. */}
+      <form
+        action="/dashboard/posts"
+        method="GET"
+        className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center"
+      >
+        {/* Preserve other filter state via hidden inputs */}
+        {filter !== "all" && <input type="hidden" name="filter" value={filter} />}
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <input
+            type="search"
+            name="q"
+            defaultValue={search}
+            placeholder="Search captions…"
+            className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+          />
+        </div>
+        <select
+          name="platform"
+          defaultValue={platformFilter}
+          className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+        >
+          {PLATFORMS_FILTER.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+        <button
+          type="submit"
+          className="text-xs px-4 py-2 rounded-lg bg-card border border-border hover:border-accent/30 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Apply
+        </button>
+        {(search || platformFilter !== "all") && (
+          <Link
+            href={filter === "all" ? "/dashboard/posts" : `/dashboard/posts?filter=${filter}`}
+            className="text-xs text-muted hover:text-foreground transition-colors py-2 px-2"
+          >
+            Clear
+          </Link>
+        )}
+      </form>
+
       <div className="flex gap-1 items-center flex-wrap border-b border-border/40 -mb-2">
         {FILTERS.map((f) => {
           const isActive = filter === f.id;
@@ -148,7 +245,11 @@ export default async function PostsPage({
           return (
             <Link
               key={f.id}
-              href={f.id === "all" ? "/dashboard/posts" : `/dashboard/posts?filter=${f.id}`}
+              href={
+                f.id === "all"
+                  ? buildUrl({ filter: "", page: "" })
+                  : buildUrl({ filter: f.id, page: "" })
+              }
               className={`px-3 py-2 text-sm transition-colors border-b-2 -mb-px inline-flex items-center gap-2 ${
                 isActive
                   ? "border-accent text-foreground"
@@ -370,12 +471,43 @@ export default async function PostsPage({
                           </div>
                         )}
                       </div>
+
+                      {/* Hover-revealed delete (avoids visual clutter at rest) */}
+                      <DeleteButton postId={post.id} />
                     </article>
                   );
                 })}
               </div>
             </section>
           ))}
+
+          {/* Pagination — server-rendered with link-based prev/next */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between text-xs text-muted-foreground pt-4">
+              <span>
+                Page {page} of {totalPages} · {totalMatching} match
+                {totalMatching === 1 ? "" : "es"}
+              </span>
+              <div className="flex gap-2">
+                {page > 1 && (
+                  <Link
+                    href={buildUrl({ page: String(page - 1) })}
+                    className="px-3 py-1.5 rounded-lg bg-card border border-border hover:border-accent/30 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    ← Prev
+                  </Link>
+                )}
+                {page < totalPages && (
+                  <Link
+                    href={buildUrl({ page: String(page + 1) })}
+                    className="px-3 py-1.5 rounded-lg bg-card border border-border hover:border-accent/30 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Next →
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
