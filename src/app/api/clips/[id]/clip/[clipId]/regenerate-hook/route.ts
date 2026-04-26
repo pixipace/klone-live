@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/api-rate-limit";
 import { generateCaptionVariants } from "@/lib/ai";
 
 /**
@@ -11,13 +12,16 @@ import { generateCaptionVariants } from "@/lib/ai";
  * user picks a new one via the variant picker UI).
  */
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   ctx: { params: Promise<{ id: string; clipId: string }> }
 ) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = enforceRateLimit(request, session.id, "hook:regen", 20);
+  if (rl) return rl;
 
   const { id: jobId, clipId } = await ctx.params;
 

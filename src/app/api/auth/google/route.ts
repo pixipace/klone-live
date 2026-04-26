@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 
 export async function GET() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const redirectUri = `${process.env.NEXTAUTH_URL}/auth/google/callback`;
-  const csrfState = Math.random().toString(36).substring(2);
+  const csrfState = crypto.randomUUID();
 
   const scope = [
     "https://www.googleapis.com/auth/youtube.upload",

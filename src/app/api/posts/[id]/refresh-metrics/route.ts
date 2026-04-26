@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/api-rate-limit";
 import { fetchMetricsForPost } from "@/lib/platforms/insights";
 
 /**
@@ -9,13 +10,16 @@ import { fetchMetricsForPost } from "@/lib/platforms/insights";
  * Post.metrics + Post.metricsUpdatedAt. Auth-gated to the post owner.
  */
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   ctx: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = enforceRateLimit(request, session.id, "posts:metrics", 20);
+  if (rl) return rl;
   const { id } = await ctx.params;
 
   const post = await prisma.post.findFirst({

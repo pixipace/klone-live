@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/api-rate-limit";
 import { firePost } from "@/lib/post-runner";
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   ctx: RouteContext<"/api/posts/[id]/retry">
 ) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = enforceRateLimit(request, session.id, "posts:retry", 20);
+  if (rl) return rl;
 
   const { id } = await ctx.params;
 

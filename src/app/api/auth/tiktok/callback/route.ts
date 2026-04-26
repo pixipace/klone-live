@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { upsertSocialAccountForCurrentUser } from "@/lib/social-account";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -65,30 +66,29 @@ export async function GET(request: NextRequest) {
     const userData = await userResponse.json();
     const userInfo = userData.data?.user;
 
-    // Store in a cookie for now (in production, save to database)
-    const accountData = JSON.stringify({
+    // Persist to SocialAccount table (encrypted at rest via the upsert
+    // helper). Was previously also writing the same data to a `tiktok_account`
+    // cookie that nothing reads anymore — removed since cookies leaked the
+    // raw token to the client (httpOnly stops JS reads but it's still in
+    // wire/storage). DB is the only source of truth now.
+    const upsert = await upsertSocialAccountForCurrentUser({
       platform: "tiktok",
       accessToken: access_token,
       refreshToken: refresh_token,
-      openId: open_id,
-      expiresAt: Date.now() + expires_in * 1000,
+      expiresAt: new Date(Date.now() + expires_in * 1000),
+      externalId: open_id,
       username: userInfo?.display_name || "TikTok User",
       avatar: userInfo?.avatar_url || "",
-      followers: userInfo?.follower_count || 0,
     });
+    if (!upsert.ok) {
+      return NextResponse.redirect(
+        `${process.env.NEXTAUTH_URL}/dashboard/accounts?error=session_lost`
+      );
+    }
 
-    const response = NextResponse.redirect(
+    return NextResponse.redirect(
       `${process.env.NEXTAUTH_URL}/dashboard/accounts?connected=tiktok`
     );
-
-    response.cookies.set("tiktok_account", accountData, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 30, // 30 days
-    });
-
-    return response;
   } catch (err) {
     console.error("TikTok OAuth error:", err);
     return NextResponse.redirect(

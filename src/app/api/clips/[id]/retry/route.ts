@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/api-rate-limit";
 
 /**
  * Retry a FAILED job — re-queues it with the same toggles + URL. If a
@@ -8,13 +9,16 @@ import { getSession } from "@/lib/auth";
  * Otherwise the job runs from scratch.
  */
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   ctx: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = enforceRateLimit(request, session.id, "clips:retry", 20);
+  if (rl) return rl;
   const { id } = await ctx.params;
 
   const job = await prisma.clipJob.findFirst({

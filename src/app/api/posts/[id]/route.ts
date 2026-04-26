@@ -3,6 +3,7 @@ import { unlink } from "fs/promises";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/api-rate-limit";
 
 /**
  * Delete a single Post owned by the session user. Refuses to delete
@@ -10,13 +11,16 @@ import { getSession } from "@/lib/auth";
  * Cleans up the local mediaUrl file IF no other Post still references it.
  */
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   ctx: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = enforceRateLimit(request, session.id, "posts:delete", 30);
+  if (rl) return rl;
   const { id } = await ctx.params;
 
   const post = await prisma.post.findFirst({

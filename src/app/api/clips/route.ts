@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { probeYouTubeDuration } from "@/lib/clipper/youtube";
+import { enforceRateLimit } from "@/lib/api-rate-limit";
 
 const YT_RE = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be|m\.youtube\.com)\//i;
 const MAX_SOURCE_SEC = 3 * 60 * 60; // 3 hours
@@ -45,6 +46,10 @@ export async function POST(request: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  // Heavy op — clip job submission triggers download + whisper + ffmpeg
+  const rl = enforceRateLimit(request, session.id, "clips:submit", 10);
+  if (rl) return rl;
 
   const body = await request.json();
   const {

@@ -3,15 +3,19 @@ import { rm } from "fs/promises";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/api-rate-limit";
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   ctx: RouteContext<"/api/clips/[id]/repick">
 ) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = enforceRateLimit(request, session.id, "clips:repick", 20);
+  if (rl) return rl;
 
   const { id } = await ctx.params;
 

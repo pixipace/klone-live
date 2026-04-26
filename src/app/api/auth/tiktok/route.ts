@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 
 export async function GET() {
   const clientKey = process.env.TIKTOK_CLIENT_KEY;
   const redirectUri = `${process.env.NEXTAUTH_URL}/auth/tiktok/callback`;
 
-  const csrfState = Math.random().toString(36).substring(2);
+  const csrfState = crypto.randomUUID();
   const scope = "user.info.basic,video.publish,video.upload,video.list";
 
   const authUrl = new URL("https://www.tiktok.com/v2/auth/authorize/");

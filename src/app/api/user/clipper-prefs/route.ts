@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/api-rate-limit";
 import { ALL_PLATFORMS, type PlatformId } from "@/lib/platforms";
 
 const PLATFORM_SET = new Set<string>(ALL_PLATFORMS);
 
+// GET is read-only — skip rate limit (user-info reads don't need throttling)
 export async function GET() {
   const session = await getSession();
   if (!session) {
@@ -46,6 +48,9 @@ export async function PATCH(request: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = enforceRateLimit(request, session.id, "user:clipper-prefs", 30);
+  if (rl) return rl;
   const body = (await request.json()) as {
     autoPublish?: boolean;
     platforms?: string[];

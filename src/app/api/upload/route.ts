@@ -3,6 +3,7 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import crypto from "crypto";
 import { getSession } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/api-rate-limit";
 
 const MAX_BYTES = 100 * 1024 * 1024; // 100 MB
 const ALLOWED_MIME = new Set([
@@ -21,6 +22,9 @@ export async function POST(request: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = enforceRateLimit(request, session.id, "upload", 20);
+  if (rl) return rl;
 
   try {
     const formData = await request.formData();

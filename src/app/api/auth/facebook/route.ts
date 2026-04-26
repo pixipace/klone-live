@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 
 export async function GET() {
   const appId = process.env.META_APP_ID;
   const redirectUri = `${process.env.NEXTAUTH_URL}/auth/facebook/callback`;
 
-  const csrfState = Math.random().toString(36).substring(2);
+  const csrfState = crypto.randomUUID();
   // Request all Facebook + Instagram scopes in one auth flow
   const scope = [
     "public_profile",

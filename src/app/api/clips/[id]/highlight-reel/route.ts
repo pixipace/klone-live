@@ -4,6 +4,7 @@ import path from "path";
 import { stat } from "fs/promises";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/api-rate-limit";
 
 /**
  * Generate a highlight reel from the top N clips of a job. Concatenates
@@ -22,6 +23,9 @@ export async function POST(
   if (!session) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = enforceRateLimit(request, session.id, "highlight-reel", 10);
+  if (rl) return rl;
 
   const { id: jobId } = await ctx.params;
 

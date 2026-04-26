@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/api-rate-limit";
 import { ALL_PLATFORMS, type PlatformId } from "@/lib/platforms";
 import { autoDistributeClips } from "@/lib/clipper/distribute";
 
@@ -14,6 +15,9 @@ export async function POST(
   if (!session) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = enforceRateLimit(request, session.id, "clips:distribute", 20);
+  if (rl) return rl;
 
   const { id } = await ctx.params;
   const body = await request.json();

@@ -5,6 +5,7 @@ import path from "path";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/api-rate-limit";
 
 const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024; // 1 GB
 const MAX_SOURCE_SEC = 3 * 60 * 60; // 3 hours (matches /api/clips)
@@ -46,6 +47,9 @@ export async function POST(request: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = enforceRateLimit(request, session.id, "clips:upload", 10);
+  if (rl) return rl;
 
   const inflight = await prisma.clipJob.count({
     where: {

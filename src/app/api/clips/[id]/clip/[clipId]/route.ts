@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/api-rate-limit";
 
 export async function PATCH(
   request: NextRequest,
@@ -10,6 +11,9 @@ export async function PATCH(
   if (!session) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = enforceRateLimit(request, session.id, "clip:patch", 30);
+  if (rl) return rl;
 
   const { id: jobId, clipId } = await ctx.params;
 

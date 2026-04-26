@@ -4,6 +4,7 @@ import { rename, stat } from "fs/promises";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/api-rate-limit";
 
 /**
  * Trim an already-rendered clip down (can't extend — source is gone).
@@ -21,6 +22,9 @@ export async function PATCH(
   if (!session) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const rl = enforceRateLimit(request, session.id, "clips:trim", 20);
+  if (rl) return rl;
 
   const { id: jobId, clipId } = await ctx.params;
 

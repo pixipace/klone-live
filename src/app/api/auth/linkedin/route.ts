@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 
 export async function GET() {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
   const redirectUri = `${process.env.NEXTAUTH_URL}/auth/linkedin/callback`;
 
-  const csrfState = Math.random().toString(36).substring(2);
+  const csrfState = crypto.randomUUID();
   const scope = "openid profile w_member_social";
 
   const authUrl = new URL("https://www.linkedin.com/oauth/v2/authorization");
