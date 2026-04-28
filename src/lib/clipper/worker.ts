@@ -2,6 +2,7 @@ import { rm } from "fs/promises";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 import { runPipeline } from "./pipeline";
+import { runExplainerPipeline } from "./explainer-pipeline";
 import { autoDistributeClips } from "./distribute";
 import { cleanupSourceCache } from "./youtube";
 import { ALL_PLATFORMS, type PlatformId } from "@/lib/platforms";
@@ -93,6 +94,58 @@ async function cleanupOldJobs() {
   } catch (err) {
     console.warn(`[clipper-worker] cleanupOrphanUploads error:`, err);
   }
+
+  // Also cleanup orphan POSTS — Post rows whose mediaUrl points to a
+  // file that no longer exists (almost always because the underlying
+  // ClipJob was deleted). Without this, the schedule view shows posts
+  // that immediately ENOENT when the worker tries to publish them.
+  try {
+    const removed = await cleanupOrphanPosts();
+    if (removed > 0) {
+      console.log(`[clipper-worker] cleaned up ${removed} orphan post(s) (missing media file)`);
+    }
+  } catch (err) {
+    console.warn(`[clipper-worker] cleanupOrphanPosts error:`, err);
+  }
+}
+
+async function cleanupOrphanPosts(): Promise<number> {
+  const { stat } = await import("fs/promises");
+  const posts = await prisma.post.findMany({
+    where: { mediaUrl: { startsWith: "/api/uploads/" } },
+    select: { id: true, mediaUrl: true, status: true },
+  });
+  const orphanIds: string[] = [];
+  const cancelIds: string[] = [];
+  for (const p of posts) {
+    if (!p.mediaUrl) continue;
+    const filename = p.mediaUrl.replace(/^\/api\/uploads\//, "");
+    if (!filename || filename.includes("..")) continue;
+    const filepath = path.join(process.cwd(), ".uploads", filename);
+    try {
+      await stat(filepath);
+    } catch {
+      orphanIds.push(p.id);
+      if (p.status === "SCHEDULED" || p.status === "QUEUED" || p.status === "POSTING") {
+        cancelIds.push(p.id);
+      }
+    }
+  }
+  if (cancelIds.length > 0) {
+    await prisma.post.updateMany({
+      where: { id: { in: cancelIds } },
+      data: {
+        status: "FAILED",
+        results: JSON.stringify({
+          cancelled: { error: "Source media file was deleted" },
+        }),
+      },
+    });
+  }
+  if (orphanIds.length > 0) {
+    await prisma.post.deleteMany({ where: { id: { in: orphanIds } } });
+  }
+  return orphanIds.length;
 }
 
 async function cleanupOrphanUploads() {
@@ -179,9 +232,15 @@ async function tick() {
   if (!job) return;
 
   inflight = true;
-  console.log(`[clipper-worker] picking up job ${job.id} (${job.sourceUrl})`);
+  console.log(
+    `[clipper-worker] picking up job ${job.id} mode=${job.mode} (${job.sourceUrl})`,
+  );
   try {
-    await runPipeline(job.id);
+    if (job.mode === "EXPLAINER") {
+      await runExplainerPipeline(job.id);
+    } else {
+      await runPipeline(job.id);
+    }
     await maybeAutoPublish(job.id);
   } catch (err) {
     console.error(`[clipper-worker] pipeline crashed:`, err);

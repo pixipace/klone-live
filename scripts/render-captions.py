@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Render a sequence of caption PNG frames for word-by-word display.
+Render caption PNG frames for word-by-word display.
 
-Reads word-level data from stdin as JSON:
+Reads JSON from stdin:
   {"words": [{"start": 0.4, "end": 0.7, "text": "Hello"}, ...],
    "durationSec": 30.0,
    "outDir": "/path/to/dir",
@@ -10,193 +10,242 @@ Reads word-level data from stdin as JSON:
    "targetWidth": 1080,
    "targetHeight": 1920}
 
-Outputs frames as cap_000001.png, cap_000002.png, ... in outDir.
-Each frame shows up to 3 words centered, with the current word highlighted
-bright yellow; other visible words white. Black rounded box for legibility.
-Placed at ~70% down the frame (bottom third).
+Writes cap_000001.png, cap_000002.png, ... to outDir.
 
-Usage: cat input.json | render-captions.py
+Design: ONE word at a time, dead-center horizontally, anchored vertically.
+Each spoken word REPLACES the previous — no sliding window, no re-centering
+mid-word, no horizontal jumping. Big bold text with thick black stroke; no
+box. This is the viral-shorts standard ("CapCut auto-captions") and reads
+clean over any background without occluding a quarter of the frame.
+
+Three styles via CAPTION_STYLE env:
+  bold    (default) — single word, huge, white + thick stroke
+  yellow            — single word, huge, yellow + thick stroke
+  classic           — legacy 2-word + box (kept for users who already chose it)
 """
 
 import json
 import os
 import sys
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-DEFAULT_FONT = "/Users/gill/Library/Fonts/Lato-Bold.ttf"
-WORD_GAP = 16  # px between words
-LINE_SPACING = 12
-MAX_LINES = 2
-MAX_WORDS_PER_FRAME = 4  # current + up to 3 surrounding for context
+# Lato Black is the heaviest weight available locally and reads as bold-bold
+# at large sizes — close to the "Anton/Bebas/Impact" feel TikTok uses without
+# adding a font dependency. Falls back to system bold if missing.
+FONT_CANDIDATES = [
+    "/Users/gill/Library/Fonts/Lato-Black.ttf",
+    "/Users/gill/Library/Fonts/Lato-Bold.ttf",
+    "/System/Library/Fonts/SFCompact.ttf",
+    "/System/Library/Fonts/Helvetica.ttc",
+]
 
-# Three style presets — STYLE env var picks one
-STYLE = os.environ.get("CAPTION_STYLE", "classic").strip().lower()
+STYLE = os.environ.get("CAPTION_STYLE", "bold").strip().lower()
 
-if STYLE == "bold":
-    # TikTok-style — bigger font, bright text always, no box, stroke for legibility
-    FONT_SIZE = 96
-    HIGHLIGHT_COLOR = (255, 220, 60, 255)
-    TEXT_COLOR = (255, 230, 100, 255)
-    USE_BOX = False
-    STROKE_WIDTH = 6
-    STROKE_COLOR = (0, 0, 0, 255)
-    BOX_OPACITY = 0.0
-    BOX_PAD_X = 0
-    BOX_PAD_Y = 0
-elif STYLE == "minimal":
-    # YouTube-essay-style — small white text, no box, current word slightly bigger
-    FONT_SIZE = 56
-    HIGHLIGHT_COLOR = (255, 255, 255, 255)
-    TEXT_COLOR = (200, 200, 200, 230)
-    USE_BOX = False
-    STROKE_WIDTH = 3
-    STROKE_COLOR = (0, 0, 0, 200)
-    BOX_OPACITY = 0.0
-    BOX_PAD_X = 0
-    BOX_PAD_Y = 0
-else:
-    # Classic — yellow word highlight, white siblings, black rounded box
-    FONT_SIZE = 72
-    HIGHLIGHT_COLOR = (255, 220, 60, 255)
+if STYLE == "classic":
+    # Legacy preset — kept so users who explicitly chose "classic" still get it.
+    FONT_SIZE = 78
     TEXT_COLOR = (255, 255, 255, 255)
-    USE_BOX = True
+    HIGHLIGHT_COLOR = (255, 220, 60, 255)
     STROKE_WIDTH = 0
-    STROKE_COLOR = (0, 0, 0, 0)
-    BOX_OPACITY = 0.6
-    BOX_PAD_X = 24
-    BOX_PAD_Y = 16
+    STROKE_COLOR = (0, 0, 0, 255)
+    USE_BOX = True
+    BOX_OPACITY = 0.65
+    BOX_PAD_X = 28
+    BOX_PAD_Y = 18
+    WORDS_PER_FRAME = 2
+    Y_PERCENT = 0.70
+elif STYLE == "yellow":
+    FONT_SIZE = 128
+    TEXT_COLOR = (255, 220, 60, 255)
+    HIGHLIGHT_COLOR = (255, 220, 60, 255)
+    STROKE_WIDTH = 10
+    STROKE_COLOR = (0, 0, 0, 255)
+    USE_BOX = False
+    BOX_OPACITY = 0.0
+    BOX_PAD_X = 0
+    BOX_PAD_Y = 0
+    WORDS_PER_FRAME = 1
+    Y_PERCENT = 0.66
+else:  # "bold" (default — premium look)
+    # Premium upgrade (vs old harsh-stroke look):
+    #   - Drop shadow + soft glow instead of 10px black stroke (less "AI"-looking)
+    #   - Subtle dark pill background under text for legibility on busy footage
+    #   - First word of multi-word chunks coloured accent (visual rhythm)
+    #   - Slightly smaller font + tighter spacing (fits more, looks tighter)
+    #   - Position 62% (was 66%) — clears phone UI bottom safe area
+    FONT_SIZE = 104
+    TEXT_COLOR = (255, 255, 255, 255)
+    HIGHLIGHT_COLOR = (255, 80, 80, 255)  # Brand accent for first word
+    STROKE_WIDTH = 0
+    STROKE_COLOR = (0, 0, 0, 255)
+    USE_BOX = True                     # Premium uses a soft dark pill
+    BOX_OPACITY = 0.55
+    BOX_PAD_X = 32
+    BOX_PAD_Y = 18
+    WORDS_PER_FRAME = 1
+    Y_PERCENT = 0.62
 
 
-def load_font(size: int = FONT_SIZE):
-    try:
-        return ImageFont.truetype(DEFAULT_FONT, size)
-    except OSError:
-        return ImageFont.load_default()
+def load_font(size: int):
+    for p in FONT_CANDIDATES:
+        try:
+            return ImageFont.truetype(p, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
 
 
-def find_current_word_idx(words: list[dict], t: float) -> int | None:
-    """Return index of the word being spoken at time t, or None if silence."""
+def find_current_word_idx(words, t):
+    """Return index of word being spoken at time t, else closest upcoming
+    within 0.35s, else None (silence — render nothing)."""
     for i, w in enumerate(words):
         if w["start"] <= t < w["end"]:
             return i
-    # If between words, find the closest *upcoming* word within 0.4s
     for i, w in enumerate(words):
-        if w["start"] > t and w["start"] - t < 0.4:
+        if w["start"] > t and w["start"] - t < 0.35:
             return i
     return None
 
 
-def words_for_frame(words: list[dict], current_idx: int) -> tuple[list[dict], int]:
-    """Return (visible_words, highlight_index_within_visible)."""
-    # Center current word in the visible window
-    half = MAX_WORDS_PER_FRAME // 2
+def words_for_frame(words, current_idx):
+    """For WORDS_PER_FRAME=1, just return [current]. For >1, group with
+    neighbors. Returns (visible_list, highlight_idx_within_visible)."""
+    if WORDS_PER_FRAME <= 1:
+        return [words[current_idx]], 0
+    half = WORDS_PER_FRAME // 2
     start = max(0, current_idx - half)
-    end = min(len(words), start + MAX_WORDS_PER_FRAME)
-    # If we hit the right edge, shift left to keep the window full
-    start = max(0, end - MAX_WORDS_PER_FRAME)
-    visible = words[start:end]
-    highlight_within = current_idx - start
-    return visible, highlight_within
+    end = min(len(words), start + WORDS_PER_FRAME)
+    start = max(0, end - WORDS_PER_FRAME)
+    return words[start:end], current_idx - start
 
 
-def render_frame(
-    visible: list[dict],
-    highlight_idx: int,
-    target_w: int,
-    target_h: int,
-    font: ImageFont.ImageFont,
-) -> Image.Image:
+def shrink_to_fit(text, max_w, base_size):
+    """Pick a font size that keeps `text` within max_w. Caps at base_size,
+    floors at 60px so single very-long words still render legibly."""
+    size = base_size
+    while size > 60:
+        font = load_font(size)
+        bbox = font.getbbox(text)
+        if (bbox[2] - bbox[0]) <= max_w:
+            return font, bbox
+        size -= 6
+    return load_font(60), load_font(60).getbbox(text)
+
+
+def _word_widths(font, words):
+    """Per-word pixel widths (no inter-word space)."""
+    return [font.getbbox(w)[2] - font.getbbox(w)[0] for w in words]
+
+
+def render_frame(visible, highlight_idx, target_w, target_h,
+                 word_age=1.0, position_idx=0):
+    """word_age: seconds since THIS word/chunk first appeared (0..N).
+       Used for the entrance scale-bounce — 0..0.15s gets a quick pop.
+       position_idx: rolling counter across the script. Even = bottom,
+       every 3rd = top (variance to break "captions always same spot")."""
     img = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
-
     if not visible:
         return img
 
-    draw = ImageDraw.Draw(img)
-    texts = [w["text"].strip() for w in visible]
-
-    # Measure each word's bounding box
-    word_widths: list[int] = []
-    word_heights: list[int] = []
-    for t in texts:
-        bbox = font.getbbox(t)
-        word_widths.append(bbox[2] - bbox[0])
-        word_heights.append(bbox[3] - bbox[1])
-
-    # Wrap to lines so the row doesn't exceed target_w - 80
-    max_row_w = target_w - 80
-    lines: list[list[int]] = [[]]  # indices
-    for i, w in enumerate(word_widths):
-        candidate = sum(word_widths[idx] for idx in lines[-1]) + (
-            len(lines[-1]) * WORD_GAP if lines[-1] else 0
-        ) + w
-        if candidate > max_row_w and lines[-1]:
-            lines.append([i])
-            if len(lines) > MAX_LINES:
-                # Drop overflow lines silently
-                lines = lines[:MAX_LINES]
-                break
-        else:
-            lines[-1].append(i)
-
-    # Compute total block size
-    line_widths: list[int] = []
-    line_heights: list[int] = []
-    for line in lines:
-        if not line:
-            continue
-        lw = sum(word_widths[i] for i in line) + WORD_GAP * (len(line) - 1)
-        lh = max(word_heights[i] for i in line)
-        line_widths.append(lw)
-        line_heights.append(lh)
-
-    if not line_heights:
+    text = " ".join(w["text"].strip() for w in visible).upper()
+    if not text:
         return img
 
-    total_h = sum(line_heights) + LINE_SPACING * (len(line_heights) - 1)
-    box_w = max(line_widths) + BOX_PAD_X * 2
-    box_h = total_h + BOX_PAD_Y * 2
+    # Position variance: every 3rd chunk goes to TOP of frame instead
+    # of bottom. Breaks the "AI captions always same spot" tell that
+    # makes static captions read as auto-generated.
+    use_top = position_idx % 3 == 2
+    y_pct = 0.18 if use_top else Y_PERCENT
 
-    # Position: ~72% down the frame
-    box_y = int(target_h * 0.72)
-    box_x = (target_w - box_w) // 2
+    # Pop animation: 0.85 → 1.05 → 1.0 over the first 0.15s. Implemented
+    # by scaling the FONT SIZE itself (no resampling artifacts vs scaling
+    # a finished bitmap). Cheap, looks crisp.
+    pop_scale = 1.0
+    if word_age < 0.15:
+        u = max(0.0, min(1.0, word_age / 0.15))
+        if u < 0.6:
+            pop_scale = 0.85 + (1.05 - 0.85) * (u / 0.6)
+        else:
+            pop_scale = 1.05 - (1.05 - 1.0) * ((u - 0.6) / 0.4)
+    effective_size = max(60, int(FONT_SIZE * pop_scale))
 
+    # Single-word path: text is centered, anchor never shifts mid-word so
+    # there's zero horizontal jitter between frames showing the same word.
+    max_w = target_w - 120  # 60px safe margin each side
+    font, bbox = shrink_to_fit(text, max_w, effective_size)
+
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    base_x = (target_w - text_w) // 2 - bbox[0]
+    base_y = int(target_h * y_pct) - bbox[1]
+
+    # 1) Soft pill background — premium "produced" look without screaming
+    #    box. Slightly rounded, semi-opaque, sits just behind the text.
     if USE_BOX:
-        draw.rounded_rectangle(
-            [(box_x, box_y), (box_x + box_w, box_y + box_h)],
-            radius=20,
+        box_x0 = (target_w - text_w) // 2 - BOX_PAD_X
+        box_y0 = int(target_h * Y_PERCENT) - BOX_PAD_Y
+        box_x1 = box_x0 + text_w + BOX_PAD_X * 2
+        box_y1 = box_y0 + text_h + BOX_PAD_Y * 2
+        # Drop shadow for the pill (gives depth)
+        shadow_layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        sdraw = ImageDraw.Draw(shadow_layer)
+        sdraw.rounded_rectangle(
+            [(box_x0 + 6, box_y0 + 12), (box_x1 + 6, box_y1 + 12)],
+            radius=24,
+            fill=(0, 0, 0, 120),
+        )
+        shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(8))
+        img = Image.alpha_composite(img, shadow_layer)
+        # Pill itself
+        pill_layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        pdraw = ImageDraw.Draw(pill_layer)
+        pdraw.rounded_rectangle(
+            [(box_x0, box_y0), (box_x1, box_y1)],
+            radius=24,
             fill=(0, 0, 0, int(255 * BOX_OPACITY)),
         )
+        img = Image.alpha_composite(img, pill_layer)
 
-    y = box_y + BOX_PAD_Y
-    for li, line in enumerate(lines[: len(line_heights)]):
-        lw = line_widths[li]
-        x = (target_w - lw) // 2
-        for word_i in line:
-            color = HIGHLIGHT_COLOR if word_i == highlight_idx else TEXT_COLOR
-            offset_y = -font.getbbox(texts[word_i])[1]
+    draw = ImageDraw.Draw(img)
+
+    # 2) Per-word colour — first word of multi-word chunks gets the accent
+    #    so the eye has a focal point. Single-word chunks just use TEXT_COLOR.
+    words = text.split(" ")
+    if len(words) > 1 and HIGHLIGHT_COLOR != TEXT_COLOR:
+        widths = _word_widths(font, words)
+        space_w = font.getbbox(" ")[2] - font.getbbox(" ")[0]
+        cursor_x = base_x
+        for wi, w in enumerate(words):
+            color = HIGHLIGHT_COLOR if wi == 0 else TEXT_COLOR
             if STROKE_WIDTH > 0:
-                # Black stroke around text — needed for box-less styles
-                # so text stays legible over any background.
                 draw.text(
-                    (x, y + offset_y),
-                    texts[word_i],
-                    font=font,
-                    fill=color,
-                    stroke_width=STROKE_WIDTH,
-                    stroke_fill=STROKE_COLOR,
+                    (cursor_x, base_y), w, font=font, fill=color,
+                    stroke_width=STROKE_WIDTH, stroke_fill=STROKE_COLOR,
                 )
             else:
-                draw.text((x, y + offset_y), texts[word_i], font=font, fill=color)
-            x += word_widths[word_i] + WORD_GAP
-        y += line_heights[li] + LINE_SPACING
+                # Soft drop shadow per word for depth without harsh stroke
+                draw.text((cursor_x + 4, base_y + 5), w, font=font, fill=(0, 0, 0, 200))
+                draw.text((cursor_x, base_y), w, font=font, fill=color)
+            cursor_x += widths[wi] + space_w
+    else:
+        color = HIGHLIGHT_COLOR if len(words) == 1 else TEXT_COLOR
+        if STROKE_WIDTH > 0:
+            draw.text(
+                (base_x, base_y), text, font=font, fill=color,
+                stroke_width=STROKE_WIDTH, stroke_fill=STROKE_COLOR,
+            )
+        else:
+            # Soft drop shadow for depth (premium, modern look — replaces
+            # the harsh 10px black stroke that read as "AI-generated").
+            draw.text((base_x + 4, base_y + 5), text, font=font, fill=(0, 0, 0, 200))
+            draw.text((base_x, base_y), text, font=font, fill=color)
 
     return img
 
 
-def main() -> None:
-    raw = sys.stdin.read()
-    cfg = json.loads(raw)
+def main():
+    cfg = json.loads(sys.stdin.read())
     words = cfg["words"]
     duration = float(cfg["durationSec"])
     out_dir = cfg["outDir"]
@@ -205,21 +254,26 @@ def main() -> None:
     target_h = int(cfg.get("targetHeight", 1920))
 
     os.makedirs(out_dir, exist_ok=True)
-    font = load_font(FONT_SIZE)
 
     n_frames = max(1, int(duration * fps))
     for i in range(n_frames):
         t = (i + 0.5) / fps
         idx = find_current_word_idx(words, t)
         if idx is None:
-            # Empty frame (silence)
             img = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
         else:
             visible, highlight = words_for_frame(words, idx)
-            img = render_frame(visible, highlight, target_w, target_h, font)
+            # word_age = time since the focus chunk's start (used by the
+            # pop-bounce animation in render_frame). idx is the index into
+            # the input words array, so its start time is words[idx]["start"].
+            word_age = max(0.0, t - words[idx]["start"])
+            img = render_frame(
+                visible, highlight, target_w, target_h,
+                word_age=word_age,
+                position_idx=idx,
+            )
         img.save(os.path.join(out_dir, f"cap_{i + 1:06d}.png"), "PNG")
 
-    # Print frame count for the caller
     print(json.dumps({"frames": n_frames, "fps": fps}))
 
 

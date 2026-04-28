@@ -2,11 +2,26 @@ import type { SocialAccount } from "@prisma/client";
 
 export type MediaType = "image" | "video" | null;
 
+/** Extra context attached when the media being posted is a Klone clip
+ *  (i.e. mediaUrl matches /api/uploads/clips/<jobId>/...). Currently only
+ *  the YouTube poster reads this, to build a transformative-looking
+ *  description (source attribution, commentary, transcript) that both
+ *  improves Content ID dispute success AND signals fair-use. Optional —
+ *  posters MUST tolerate this being undefined for non-clip uploads. */
+export type ClipContext = {
+  sourceUrl: string | null;
+  sourceTitle: string | null;
+  hookTitle: string | null;
+  hookReason: string | null;
+  transcript: string | null;
+};
+
 export type PlatformPostInput = {
   account: SocialAccount;
   caption: string;
   mediaUrl?: string;
   mediaType?: MediaType;
+  clipContext?: ClipContext;
 };
 
 export type PlatformSuccess = {

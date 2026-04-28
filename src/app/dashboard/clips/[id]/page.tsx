@@ -23,8 +23,8 @@ export default async function ClipJobDetail({
   if (!job) notFound();
 
   // For each rendered clip, find Posts that point at its videoPath so the
-  // UI can show "Live on N platforms · Scheduled on M" status. Cheaper as
-  // ONE batched IN-query than N per-clip lookups.
+  // UI can show "Live · youtube" status pills + a × per-Post delete button.
+  // One batched IN-query rather than N per-clip lookups.
   const clipMediaUrls = job.clips
     .map((c) => c.videoPath)
     .filter((v): v is string => v !== null);
@@ -32,35 +32,28 @@ export default async function ClipJobDetail({
     ? await prisma.post.findMany({
         where: { userId: session.id, mediaUrl: { in: clipMediaUrls } },
         select: {
+          id: true,
           mediaUrl: true,
           status: true,
           platforms: true,
-          scheduledFor: true,
-          postedAt: true,
         },
+        orderBy: { createdAt: "desc" },
       })
     : [];
 
-  const postStatusByClipMediaUrl = new Map<
+  const postsByClipMediaUrl = new Map<
     string,
-    { live: string[]; scheduled: string[]; failed: string[] }
+    Array<{ id: string; platforms: string[]; status: string }>
   >();
   for (const p of matchedPosts) {
     if (!p.mediaUrl) continue;
-    const platforms = p.platforms ? p.platforms.split(",") : [];
-    const bucket =
-      postStatusByClipMediaUrl.get(p.mediaUrl) ??
-      { live: [], scheduled: [], failed: [] };
-    for (const plat of platforms) {
-      if (p.status === "POSTED" || p.status === "PARTIAL") {
-        if (!bucket.live.includes(plat)) bucket.live.push(plat);
-      } else if (p.status === "SCHEDULED" || p.status === "POSTING") {
-        if (!bucket.scheduled.includes(plat)) bucket.scheduled.push(plat);
-      } else if (p.status === "FAILED") {
-        if (!bucket.failed.includes(plat)) bucket.failed.push(plat);
-      }
-    }
-    postStatusByClipMediaUrl.set(p.mediaUrl, bucket);
+    const list = postsByClipMediaUrl.get(p.mediaUrl) ?? [];
+    list.push({
+      id: p.id,
+      platforms: p.platforms ? p.platforms.split(",").filter(Boolean) : [],
+      status: p.status,
+    });
+    postsByClipMediaUrl.set(p.mediaUrl, list);
   }
 
   return (
@@ -69,9 +62,7 @@ export default async function ClipJobDetail({
         id: job.id,
         sourceUrl: job.sourceUrl,
         sourceTitle: job.sourceTitle,
-        highlightReelPath: job.highlightReelPath,
-        highlightReelThumb: job.highlightReelThumb,
-        highlightReelHook: job.highlightReelHook,
+        mode: (job.mode === "EXPLAINER" ? "EXPLAINER" : "CLIP") as "CLIP" | "EXPLAINER",
         clips: job.clips.map((c) => {
           let hookVariants: string[] = [];
           if (c.hookVariants) {
@@ -83,13 +74,9 @@ export default async function ClipJobDetail({
               // ignore
             }
           }
-          const status = c.videoPath
-            ? postStatusByClipMediaUrl.get(c.videoPath) ?? {
-                live: [],
-                scheduled: [],
-                failed: [],
-              }
-            : { live: [], scheduled: [], failed: [] };
+          const posts = c.videoPath
+            ? postsByClipMediaUrl.get(c.videoPath) ?? []
+            : [];
           return {
             id: c.id,
             startSec: c.startSec,
@@ -104,7 +91,7 @@ export default async function ClipJobDetail({
             thumbnailPath: c.thumbnailPath,
             musicAttribution: c.musicAttribution,
             publicShareEnabled: c.publicShareEnabled,
-            postStatus: status,
+            posts,
           };
         }),
       }}

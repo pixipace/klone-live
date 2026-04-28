@@ -32,6 +32,7 @@ export async function GET() {
       stage: j.stage,
       stageDetail: j.stageDetail,
       progress: j.progress,
+      mode: j.mode,
       error: j.error,
       startedAt: j.startedAt,
       finishedAt: j.finishedAt,
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const {
     sourceUrl,
+    mode = "CLIP",
     captions = true,
     music = true,
     punchZooms = true,
@@ -62,6 +64,7 @@ export async function POST(request: NextRequest) {
     guidance,
   } = body as {
     sourceUrl?: string;
+    mode?: string;
     captions?: boolean;
     music?: boolean;
     punchZooms?: boolean;
@@ -69,6 +72,10 @@ export async function POST(request: NextRequest) {
     translateCaptions?: boolean;
     guidance?: string;
   };
+  // Mode: CLIP = traditional source-extraction; EXPLAINER = AI-narrated
+  // commentary video using silent source cutaways. Anything else falls
+  // back to CLIP for safety.
+  const jobMode: "CLIP" | "EXPLAINER" = mode === "EXPLAINER" ? "EXPLAINER" : "CLIP";
 
   if (!sourceUrl || typeof sourceUrl !== "string") {
     return NextResponse.json({ error: "Missing sourceUrl" }, { status: 400 });
@@ -120,6 +127,7 @@ export async function POST(request: NextRequest) {
       sourceUrl: sourceUrl.trim(),
       sourceDuration: Math.round(durationSec),
       status: "QUEUED",
+      mode: jobMode,
       optCaptions: !!captions,
       optMusic: !!music,
       optPunchZooms: !!punchZooms,

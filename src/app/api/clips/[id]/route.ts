@@ -49,6 +49,41 @@ export async function DELETE(
     return NextResponse.json({ success: true });
   }
 
+  // Posts that point at this job's clip files become orphans the moment
+  // the on-disk files are removed below. Cancel any still-pending ones
+  // and prune the Post rows so the schedule view doesn't keep showing
+  // them. We also wipe POSTED rows for this jobId — they're now
+  // un-replayable (file is gone) and only clutter the posts page.
+  const orphanedPosts = await prisma.post.findMany({
+    where: {
+      userId: session.id,
+      mediaUrl: { startsWith: `/api/uploads/clips/${id}/` },
+    },
+    select: { id: true, status: true },
+  });
+  if (orphanedPosts.length > 0) {
+    const cancelable = orphanedPosts
+      .filter((p) => p.status === "SCHEDULED" || p.status === "QUEUED")
+      .map((p) => p.id);
+    if (cancelable.length > 0) {
+      await prisma.post.updateMany({
+        where: { id: { in: cancelable } },
+        data: {
+          status: "FAILED",
+          results: JSON.stringify({
+            cancelled: { error: "Source clip job was deleted" },
+          }),
+        },
+      });
+    }
+    // Delete all Post rows tied to this job — they reference files that
+    // are about to vanish, so keeping them in the table only confuses
+    // the user (broken thumbnails, ENOENT on retry, etc).
+    await prisma.post.deleteMany({
+      where: { id: { in: orphanedPosts.map((p) => p.id) } },
+    });
+  }
+
   // Cascade delete the DB rows (Clip rows go too via Prisma onDelete: Cascade)
   await prisma.clipJob.delete({ where: { id: job.id } }).catch(() => {});
 
@@ -61,5 +96,8 @@ export async function DELETE(
     });
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({
+    success: true,
+    orphanedPostsRemoved: orphanedPosts.length,
+  });
 }

@@ -31,6 +31,33 @@ export async function firePost(post: Post): Promise<FireResult> {
   });
   const accountMap = new Map(accounts.map((a) => [a.platform, a]));
 
+  // If this post's media is a Klone clip, fetch the originating Clip + Job
+  // and pass it as clipContext. Lets posters (currently just YouTube) build
+  // richer attribution + transformative-use metadata.
+  const clipMatch = post.mediaUrl?.match(/^\/api\/uploads\/clips\/([^/]+)\/(.+)$/);
+  let clipContext: import("@/lib/platforms/types").ClipContext | undefined;
+  if (clipMatch) {
+    const [, jobId] = clipMatch;
+    const clip = await prisma.clip.findFirst({
+      where: { jobId, videoPath: post.mediaUrl, job: { userId: post.userId } },
+      select: {
+        hookTitle: true,
+        reason: true,
+        transcript: true,
+        job: { select: { sourceUrl: true, sourceTitle: true } },
+      },
+    });
+    if (clip) {
+      clipContext = {
+        sourceUrl: clip.job.sourceUrl ?? null,
+        sourceTitle: clip.job.sourceTitle ?? null,
+        hookTitle: clip.hookTitle ?? null,
+        hookReason: clip.reason ?? null,
+        transcript: clip.transcript ?? null,
+      };
+    }
+  }
+
   const results: Record<string, PlatformResult> = {};
 
   for (const platform of requested) {
@@ -48,6 +75,7 @@ export async function firePost(post: Post): Promise<FireResult> {
         caption: post.caption,
         mediaUrl: post.mediaUrl ?? undefined,
         mediaType: (post.mediaType ?? null) as "image" | "video" | null,
+        clipContext,
       });
     } catch (err) {
       console.error(`[firePost] ${platform} error:`, err);

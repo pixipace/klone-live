@@ -60,7 +60,7 @@ export type EditOptions = {
    * transparent with the user's branded card rendered bottom). */
   endCardPath?: string;
   /** Caption style key — passed through to the renderer. Default "classic". */
-  captionStyle?: "classic" | "bold" | "minimal";
+  captionStyle?: "classic" | "bold" | "yellow";
 };
 
 export type CutResult = {

@@ -41,12 +41,15 @@ export async function DELETE(
 
   // If no other Post still uses this media file, delete it. Auto-distribute
   // creates many Posts that all point at the same clip MP4 — only the LAST
-  // surviving Post triggers the file deletion.
+  // surviving Post triggers the file deletion. Also keep the file alive if a
+  // Clip still references it as videoPath (clip detail page would otherwise
+  // 404 the video right after a per-clip post is deleted).
   if (post.mediaUrl?.startsWith("/api/uploads/")) {
-    const stillReferenced = await prisma.post.count({
-      where: { mediaUrl: post.mediaUrl },
-    });
-    if (stillReferenced === 0) {
+    const [otherPosts, owningClip] = await Promise.all([
+      prisma.post.count({ where: { mediaUrl: post.mediaUrl } }),
+      prisma.clip.count({ where: { videoPath: post.mediaUrl } }),
+    ]);
+    if (otherPosts === 0 && owningClip === 0) {
       const filename = post.mediaUrl.replace(/^\/api\/uploads\//, "");
       const filePath = path.join(process.cwd(), ".uploads", filename);
       unlink(filePath).catch(() => {});

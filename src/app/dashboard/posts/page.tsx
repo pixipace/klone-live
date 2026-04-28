@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { format, isToday, isYesterday, startOfWeek, isAfter, formatDistanceToNow } from "date-fns";
 import { RetryButton } from "./retry-button";
 import { CancelScheduledButton } from "./cancel-scheduled-button";
+import { CleanupOrphansButton } from "./cleanup-orphans-button";
 import { MetricsRow } from "./metrics-row";
 import { DeleteButton } from "./delete-button";
 
@@ -84,6 +85,51 @@ function thumbFromMediaUrl(mediaUrl: string | null): string | null {
   return mediaUrl.replace(/\.mp4$/, ".jpg");
 }
 
+/** Per-user orphan-post sweep — for every Post owned by this user with
+ *  a local mediaUrl, stat() the file. If missing, mark scheduled/queued
+ *  ones FAILED and delete the Post row. Runs on every visit to the posts
+ *  page so the user never sees deleted-clip orphans in their schedule. */
+async function sweepOrphanPostsForUser(userId: string): Promise<void> {
+  const { stat } = await import("fs/promises");
+  const path = await import("path");
+  const posts = await prisma.post.findMany({
+    where: { userId, mediaUrl: { startsWith: "/api/uploads/" } },
+    select: { id: true, mediaUrl: true, status: true },
+  });
+  const orphanIds: string[] = [];
+  const cancelIds: string[] = [];
+  await Promise.all(
+    posts.map(async (p) => {
+      if (!p.mediaUrl) return;
+      const filename = p.mediaUrl.replace(/^\/api\/uploads\//, "");
+      if (!filename || filename.includes("..")) return;
+      const filepath = path.join(process.cwd(), ".uploads", filename);
+      try {
+        await stat(filepath);
+      } catch {
+        orphanIds.push(p.id);
+        if (p.status === "SCHEDULED" || p.status === "QUEUED" || p.status === "POSTING") {
+          cancelIds.push(p.id);
+        }
+      }
+    }),
+  );
+  if (cancelIds.length > 0) {
+    await prisma.post.updateMany({
+      where: { id: { in: cancelIds } },
+      data: {
+        status: "FAILED",
+        results: JSON.stringify({
+          cancelled: { error: "Source media file was deleted" },
+        }),
+      },
+    });
+  }
+  if (orphanIds.length > 0) {
+    await prisma.post.deleteMany({ where: { id: { in: orphanIds } } });
+  }
+}
+
 export default async function PostsPage({
   searchParams,
 }: {
@@ -96,6 +142,12 @@ export default async function PostsPage({
 }) {
   const session = await getSession();
   if (!session) redirect("/login");
+
+  // Eager orphan sweep on every visit — kills the "I deleted the clip
+  // but it's still in my schedule" confusion. Runs before the main
+  // posts query so the user never sees stale rows. Cheap (one stat()
+  // call per local mediaUrl post for this user — typically <50ms).
+  await sweepOrphanPostsForUser(session.id);
 
   const sp = await searchParams;
   const filter = (FILTERS.find((f) => f.id === sp.filter)?.id ?? "all") as FilterId;
@@ -184,12 +236,15 @@ export default async function PostsPage({
             {totalCount} total · across all platforms and statuses
           </p>
         </div>
-        <Link href="/dashboard/create">
-          <Button size="sm">
-            <PenSquare className="w-4 h-4 mr-1" />
-            New Post
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <CleanupOrphansButton />
+          <Link href="/dashboard/create">
+            <Button size="sm">
+              <PenSquare className="w-4 h-4 mr-1" />
+              New Post
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Search + platform filter — server-rendered form with GET so URL

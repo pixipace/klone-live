@@ -118,10 +118,14 @@ export async function runPipeline(jobId: string): Promise<void> {
     const brollEnabled = job.optBroll === true;
     const translateCaptions = job.optTranslateCaptions === true;
     const guidance = job.pickerGuidance ?? undefined;
-    const captionStyle = (job.user.clipperCaptionStyle === "bold" ||
-      job.user.clipperCaptionStyle === "minimal"
-      ? job.user.clipperCaptionStyle
-      : "classic") as "classic" | "bold" | "minimal";
+    // Allow the three styles render-captions.py understands. Anything else
+    // (incl. legacy "minimal") falls through to "bold" — the new default.
+    const captionStyle = (
+      job.user.clipperCaptionStyle === "classic" ||
+      job.user.clipperCaptionStyle === "yellow"
+        ? job.user.clipperCaptionStyle
+        : "bold"
+    ) as "classic" | "bold" | "yellow";
     const endCardText = job.user.clipperEndCardText?.trim() ?? "";
 
     // Pre-render end card once per job (same PNG reused for every clip)

@@ -19,6 +19,7 @@ import {
   Upload,
   Link as LinkIcon,
 } from "lucide-react";
+import { VoiceReferencePanel } from "./voice-reference-panel";
 
 const PUBLISH_PLATFORMS = [
   { id: "linkedin", name: "LinkedIn", color: "#0077b5" },
@@ -49,15 +50,15 @@ type PublishPrefs = {
   skipWeekends: boolean;
   withAiHashtags: boolean;
   timezone: string | null;
-  captionStyle: "classic" | "bold" | "minimal";
+  captionStyle: "classic" | "bold" | "yellow";
   endCardText: string;
   defaultHashtags: string;
 };
 
 const CAPTION_STYLES = [
-  { id: "classic", label: "Classic", desc: "Yellow word highlight, black box (Opus-style)" },
-  { id: "bold", label: "Bold", desc: "Big yellow text with stroke (TikTok-style)" },
-  { id: "minimal", label: "Minimal", desc: "Small white text, no box (essay-style)" },
+  { id: "bold", label: "Bold", desc: "One word at a time, huge white text + stroke (CapCut/TikTok default)" },
+  { id: "yellow", label: "Yellow", desc: "One word at a time, huge yellow text + stroke" },
+  { id: "classic", label: "Classic", desc: "Two words + black box (legacy Opus-style)" },
 ] as const;
 
 type ClipJob = {
@@ -69,6 +70,7 @@ type ClipJob = {
   stage: string | null;
   stageDetail: string | null;
   progress: number;
+  mode: "CLIP" | "EXPLAINER" | string;
   error: string | null;
   startedAt: string | null;
   finishedAt: string | null;
@@ -109,6 +111,10 @@ export default function ClipsPage() {
   const [optPunch, setOptPunch] = useState(true);
   const [optBroll, setOptBroll] = useState(false);
   const [optTranslate, setOptTranslate] = useState(false);
+  // Pipeline: CLIP extracts source moments (existing behaviour); EXPLAINER
+  // generates AI-narrated commentary videos with silent source cutaways
+  // (zero source-audio = no Content ID match, copyright-safe).
+  const [pipelineMode, setPipelineMode] = useState<"CLIP" | "EXPLAINER">("CLIP");
   const [guidance, setGuidance] = useState("");
   const [prefs, setPrefs] = useState<PublishPrefs | null>(null);
   const [prefsOpen, setPrefsOpen] = useState(false);
@@ -142,9 +148,9 @@ export default function ClipsPage() {
             (typeof window !== "undefined"
               ? Intl.DateTimeFormat().resolvedOptions().timeZone
               : null),
-          captionStyle: (data.captionStyle === "bold" || data.captionStyle === "minimal"
+          captionStyle: (data.captionStyle === "classic" || data.captionStyle === "yellow"
             ? data.captionStyle
-            : "classic") as "classic" | "bold" | "minimal",
+            : "bold") as "classic" | "bold" | "yellow",
           endCardText: typeof data.endCardText === "string" ? data.endCardText : "",
           defaultHashtags: typeof data.defaultHashtags === "string" ? data.defaultHashtags : "",
         });
@@ -228,6 +234,7 @@ export default function ClipsPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             sourceUrl: u,
+            mode: pipelineMode,
             captions: optCaptions,
             music: optMusic,
             punchZooms: optPunch,
@@ -294,8 +301,70 @@ export default function ClipsPage() {
       <Card>
         <CardTitle className="text-base mb-3 flex items-center gap-2">
           <Video className="w-4 h-4 text-error" />
-          New Clip Job
+          New Job
         </CardTitle>
+
+        {/* Pipeline mode picker — most important choice on the page, so it
+         *  goes first. CLIP = traditional source extraction. EXPLAINER =
+         *  AI-narrated commentary in our voice with silent source cutaways
+         *  (zero source-audio = copyright-safe). */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+          <button
+            type="button"
+            onClick={() => setPipelineMode("CLIP")}
+            className={`text-left p-3 rounded-lg border-2 transition-all ${
+              pipelineMode === "CLIP"
+                ? "border-accent bg-accent/5"
+                : "border-border bg-card hover:border-accent/40"
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Video className="w-4 h-4 text-error" />
+              <span className="font-semibold text-sm">Clip Mode</span>
+              {pipelineMode === "CLIP" && (
+                <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-accent text-white">
+                  selected
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-snug">
+              Extract viral moments from the source. Best for friendly sources
+              (your own podcasts, Lex Fridman, JRE). Faster, source audio
+              preserved.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPipelineMode("EXPLAINER")}
+            className={`text-left p-3 rounded-lg border-2 transition-all ${
+              pipelineMode === "EXPLAINER"
+                ? "border-success bg-success/5"
+                : "border-border bg-card hover:border-success/40"
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Sparkles className="w-4 h-4 text-success" />
+              <span className="font-semibold text-sm">Explainer Mode</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/15 text-success border border-success/30">
+                copyright-safe
+              </span>
+              {pipelineMode === "EXPLAINER" && (
+                <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-success text-white">
+                  selected
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-snug">
+              AI analyzes the source, narrates explainers in our voice with
+              silent source cutaways. No source audio used. Safe for any
+              source — MrBeast, Disney, IPL, news.
+            </p>
+          </button>
+        </div>
+
+        {pipelineMode === "EXPLAINER" && <VoiceReferencePanel />}
+
         <div className="flex gap-1 mb-3 p-0.5 rounded-lg bg-card border border-border w-fit">
           <button
             onClick={() => setMode("url")}
@@ -381,7 +450,13 @@ export default function ClipsPage() {
               ) : (
                 <Sparkles className="w-4 h-4 mr-2" />
               )}
-              {mode === "upload" ? "Upload & Find Clips" : "Find Clips"}
+              {mode === "upload"
+                ? pipelineMode === "EXPLAINER"
+                  ? "Upload & Generate Explainers"
+                  : "Upload & Find Clips"
+                : pipelineMode === "EXPLAINER"
+                  ? "Generate Explainers"
+                  : "Find Clips"}
             </Button>
           </div>
         </form>
@@ -482,8 +557,11 @@ export default function ClipsPage() {
             <div className="flex items-center gap-2">
               <Send className="w-4 h-4 text-accent" />
               <CardTitle className="text-base">Publishing preferences</CardTitle>
-              {prefs.autoPublish && (
+              {prefs.autoPublish && prefs.platforms.length > 0 && (
                 <Badge variant="accent">Auto-publish ON</Badge>
+              )}
+              {prefs.autoPublish && prefs.platforms.length === 0 && (
+                <Badge variant="warning">Auto-publish set but NO platforms</Badge>
               )}
             </div>
             <span className="text-xs text-muted-foreground">
@@ -503,9 +581,25 @@ export default function ClipsPage() {
                 <input
                   type="checkbox"
                   checked={prefs.autoPublish}
-                  onChange={(e) =>
-                    setPrefs({ ...prefs, autoPublish: e.target.checked })
-                  }
+                  onChange={async (e) => {
+                    // Auto-save just THIS toggle so users can't get stuck
+                    // in "I unchecked but the badge still says ON" — that
+                    // happens when they uncheck and walk away without
+                    // clicking the main Save button. Save the whole prefs
+                    // bundle so server state matches the UI immediately.
+                    const next = { ...prefs, autoPublish: e.target.checked };
+                    setPrefs(next);
+                    try {
+                      await fetch("/api/user/clipper-prefs", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(next),
+                      });
+                      setPrefsSavedAt(Date.now());
+                    } catch {
+                      // Silent — main Save still available as fallback
+                    }
+                  }}
                   className="accent-accent mt-0.5"
                 />
                 <div>
@@ -515,7 +609,8 @@ export default function ClipsPage() {
                   <p className="text-xs text-muted-foreground mt-0.5">
                     As soon as a clip job finishes, Klone schedules it across
                     your selected platforms using the settings below — no extra
-                    click. Leave off to review each job manually.
+                    click. Leave off to review each job manually.{" "}
+                    <span className="text-accent">Saves automatically.</span>
                   </p>
                 </div>
               </label>
@@ -765,13 +860,21 @@ export default function ClipsPage() {
                       <Badge variant={STATUS_VARIANT[job.status] || "default"}>
                         {stageLabel}
                       </Badge>
+                      {job.mode === "EXPLAINER" && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/15 text-success font-medium border border-success/30 inline-flex items-center gap-1">
+                          <Sparkles className="w-2.5 h-2.5" />
+                          Explainer
+                        </span>
+                      )}
                       {isRunning && (
                         <Loader2 className="w-3 h-3 animate-spin text-accent" />
                       )}
                       {job.status === "DONE" && (
                         <span className="text-xs text-muted-foreground">
-                          {job._count.clips} clip
-                          {job._count.clips === 1 ? "" : "s"} found
+                          {job._count.clips}{" "}
+                          {job.mode === "EXPLAINER"
+                            ? `explainer${job._count.clips === 1 ? "" : "s"}`
+                            : `clip${job._count.clips === 1 ? "" : "s"} found`}
                         </span>
                       )}
                       {job.sourceDuration && (

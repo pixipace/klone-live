@@ -18,7 +18,7 @@ const mimeTypes: Record<string, string> = {
  * revoking visibility is instant.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ clipId: string; filename: string }> }
 ) {
   const { clipId, filename } = await context.params;
@@ -65,15 +65,45 @@ export async function GET(
       clip.jobId,
       filename
     );
-    await stat(filepath);
-    const buffer = await readFile(filepath);
+    const st = await stat(filepath);
+    const fileSize = st.size;
 
     const ext = path.extname(filename).toLowerCase();
     const contentType = mimeTypes[ext] || "application/octet-stream";
 
+    // HTTP Range support — Safari/iOS html5 video bails on tap-to-play
+    // without 206 Partial Content responses for the moov-atom probe.
+    const range = request.headers.get("range");
+    if (range) {
+      const m = /bytes=(\d+)-(\d+)?/.exec(range);
+      if (m) {
+        const MAX_CHUNK = 1024 * 1024; // 1MB per Range response
+        const start = Math.min(parseInt(m[1], 10), fileSize - 1);
+        const requestedEnd = m[2] ? parseInt(m[2], 10) : fileSize - 1;
+        const end = Math.min(requestedEnd, start + MAX_CHUNK - 1, fileSize - 1);
+        if (start <= end) {
+          const buf = await readFile(filepath);
+          const chunk = buf.subarray(start, end + 1);
+          return new NextResponse(chunk as unknown as BodyInit, {
+            status: 206,
+            headers: {
+              "Content-Type": contentType,
+              "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+              "Accept-Ranges": "bytes",
+              "Content-Length": String(chunk.length),
+              "Cache-Control": "public, max-age=300, s-maxage=300",
+            },
+          });
+        }
+      }
+    }
+
+    const buffer = await readFile(filepath);
     return new NextResponse(buffer as unknown as BodyInit, {
       headers: {
         "Content-Type": contentType,
+        "Accept-Ranges": "bytes",
+        "Content-Length": String(fileSize),
         // Public cache OK — the public flag toggle would invalidate by
         // changing the URL... actually it doesn't. Keep cache short so
         // revoking visibility takes effect within minutes for visitors

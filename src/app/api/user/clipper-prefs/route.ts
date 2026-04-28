@@ -37,7 +37,7 @@ export async function GET() {
     skipWeekends: user.clipperSkipWeekends,
     withAiHashtags: user.clipperWithAiHashtags,
     timezone: user.clipperTimezone,
-    captionStyle: user.clipperCaptionStyle || "classic",
+    captionStyle: user.clipperCaptionStyle || "bold",
     endCardText: user.clipperEndCardText || "",
     defaultHashtags: user.clipperDefaultHashtags || "",
   });
@@ -98,7 +98,7 @@ export async function PATCH(request: NextRequest) {
   }
   if (typeof body.captionStyle === "string") {
     const style = body.captionStyle.toLowerCase();
-    if (style === "classic" || style === "bold" || style === "minimal") {
+    if (style === "classic" || style === "bold" || style === "yellow") {
       data.clipperCaptionStyle = style;
     }
   }

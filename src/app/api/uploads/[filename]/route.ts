@@ -22,7 +22,7 @@ const mimeTypes: Record<string, string> = {
  * users' media via guessable filenames.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ filename: string }> }
 ) {
   const session = await getSession();
@@ -50,15 +50,45 @@ export async function GET(
 
   try {
     const filepath = path.join(process.cwd(), ".uploads", filename);
-    await stat(filepath);
-    const buffer = await readFile(filepath);
+    const st = await stat(filepath);
+    const fileSize = st.size;
 
     const ext = path.extname(filename).toLowerCase();
     const contentType = mimeTypes[ext] || "application/octet-stream";
 
+    // HTTP Range support — Safari/iOS html5 video requires 206 responses
+    // or it shows the play button then bails on tap.
+    const range = request.headers.get("range");
+    if (range) {
+      const m = /bytes=(\d+)-(\d+)?/.exec(range);
+      if (m) {
+        const MAX_CHUNK = 1024 * 1024; // 1MB per Range response
+        const start = Math.min(parseInt(m[1], 10), fileSize - 1);
+        const requestedEnd = m[2] ? parseInt(m[2], 10) : fileSize - 1;
+        const end = Math.min(requestedEnd, start + MAX_CHUNK - 1, fileSize - 1);
+        if (start <= end) {
+          const buf = await readFile(filepath);
+          const chunk = buf.subarray(start, end + 1);
+          return new NextResponse(chunk as unknown as BodyInit, {
+            status: 206,
+            headers: {
+              "Content-Type": contentType,
+              "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+              "Accept-Ranges": "bytes",
+              "Content-Length": String(chunk.length),
+              "Cache-Control": "private, max-age=300",
+            },
+          });
+        }
+      }
+    }
+
+    const buffer = await readFile(filepath);
     return new NextResponse(buffer as unknown as BodyInit, {
       headers: {
         "Content-Type": contentType,
+        "Accept-Ranges": "bytes",
+        "Content-Length": String(fileSize),
         // PRIVATE — was public,max-age=year. Now per-user, no shared cache.
         "Cache-Control": "private, max-age=300",
       },

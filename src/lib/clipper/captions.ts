@@ -48,7 +48,7 @@ export async function renderCaptionFrames(
   fps: number = 8,
   targetWidth: number = 1080,
   targetHeight: number = 1920,
-  style: "classic" | "bold" | "minimal" = "classic"
+  style: "classic" | "bold" | "yellow" = "bold"
 ): Promise<RenderResult> {
   const framesDir = path.join(outDir, "caps");
   const cleanWords = dedupeConsecutive(words);
@@ -62,7 +62,10 @@ export async function renderCaptionFrames(
   });
 
   return new Promise((resolve, reject) => {
-    const child = spawn("python3", [SCRIPT_PATH], {
+    // Pin to brew python — launchd-spawned next-server otherwise resolves
+    // `python3` to a Python where Pillow isn't installed.
+    const pythonBin = process.env.PYTHON_BIN || "/opt/homebrew/bin/python3";
+    const child = spawn(pythonBin, [SCRIPT_PATH], {
       env: { ...process.env, CAPTION_STYLE: style },
     });
     let stdout = "";

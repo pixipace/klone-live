@@ -6,8 +6,15 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ExternalLink, Flame, Clock, Send, Sparkles, Check, Pencil, Save, X, RotateCcw, Zap, Loader2, RefreshCcw, Scissors, Film } from "lucide-react";
+import { ArrowLeft, ExternalLink, Flame, Clock, Send, Sparkles, Check, Pencil, Save, X, RotateCcw, Zap, Loader2, RefreshCcw, Scissors } from "lucide-react";
 import { ShareButton } from "./share-button";
+
+export type ClipPostRecord = {
+  id: string;
+  platforms: string[];
+  /** Raw Post.status from Prisma. Mapped to a UI tone in ClipPostStatus. */
+  status: string;
+};
 
 export type ClipDetail = {
   id: string;
@@ -23,42 +30,39 @@ export type ClipDetail = {
   thumbnailPath: string | null;
   musicAttribution: string | null;
   publicShareEnabled: boolean;
-  /** Per-platform post status — live = published, scheduled = queued,
-   *  failed = errored. Lets the user see at a glance what's posted vs
-   *  pending without leaving the clip detail page. */
-  postStatus: {
-    live: string[];
-    scheduled: string[];
-    failed: string[];
-  };
+  /** All Posts that point at this clip's videoPath. One pill rendered per
+   *  Post so the user can delete a specific publish-record without nuking
+   *  others (e.g. drop the YT one but keep the IG one). */
+  posts: ClipPostRecord[];
 };
 
 export type JobDetail = {
   id: string;
   sourceUrl: string;
   sourceTitle: string | null;
-  highlightReelPath: string | null;
-  highlightReelThumb: string | null;
-  highlightReelHook: string | null;
+  /** "CLIP" = traditional source-extraction; "EXPLAINER" = AI-narrated
+   *  commentary videos. Drives which per-clip actions are shown — Trim
+   *  and Regenerate-Hook only make sense for CLIP. */
+  mode: "CLIP" | "EXPLAINER";
   clips: ClipDetail[];
 };
 
 /**
- * Compact pill showing where a clip already lives vs what's still pending.
- * Three buckets: live (POSTED/PARTIAL), scheduled (SCHEDULED/POSTING),
- * failed. Renders the highest-priority state visibly + the others as a
- * subtle hover/tooltip-friendly dot strip.
+ * One pill per Post that targets this clip's videoPath, with a × button to
+ * delete just that Post. "Delete" here removes ONLY the Klone record + local
+ * media file (when nothing else references it) — the platform copy on
+ * YouTube/IG/etc is left alone. POSTING is locked (mid-publish race).
  */
 function ClipPostStatus({
-  status,
+  posts,
+  onDelete,
 }: {
-  status: { live: string[]; scheduled: string[]; failed: string[] };
+  posts: ClipPostRecord[];
+  onDelete: (postId: string) => void;
 }) {
-  const liveCount = status.live.length;
-  const schedCount = status.scheduled.length;
-  const failedCount = status.failed.length;
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  if (liveCount === 0 && schedCount === 0 && failedCount === 0) {
+  if (posts.length === 0) {
     return (
       <span className="text-[10px] px-1.5 py-0.5 rounded bg-card border border-border/40 text-muted">
         Not posted
@@ -66,35 +70,87 @@ function ClipPostStatus({
     );
   }
 
+  const tone = (
+    status: string,
+  ): { label: string; cls: string; dot: string } => {
+    if (status === "POSTED" || status === "PARTIAL")
+      return {
+        label: "Live",
+        cls: "bg-success/15 text-success",
+        dot: "bg-success",
+      };
+    if (status === "SCHEDULED" || status === "POSTING")
+      return {
+        label: "Scheduled",
+        cls: "bg-accent/15 text-accent",
+        dot: "bg-accent",
+      };
+    if (status === "FAILED")
+      return {
+        label: "Failed",
+        cls: "bg-error/15 text-error",
+        dot: "bg-error",
+      };
+    return {
+      label: status,
+      cls: "bg-card text-muted-foreground border border-border/40",
+      dot: "bg-muted",
+    };
+  };
+
+  const handleDelete = async (post: ClipPostRecord) => {
+    if (post.status === "POSTING") return;
+    if (
+      !confirm(
+        `Remove this post record from Klone?\n\nThis only deletes our copy + local file — the post on ${post.platforms.join(", ") || "the platform"} stays up. Take it down on the platform itself if you want it gone there too.`,
+      )
+    )
+      return;
+    setBusyId(post.id);
+    try {
+      const res = await fetch(`/api/posts/${post.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Failed to delete");
+        return;
+      }
+      onDelete(post.id);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <div className="inline-flex items-center gap-1.5 flex-wrap">
-      {liveCount > 0 && (
-        <span
-          title={`Live on: ${status.live.join(", ")}`}
-          className="text-[10px] px-1.5 py-0.5 rounded bg-success/15 text-success font-medium inline-flex items-center gap-1"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-success" />
-          Live · {status.live.join(", ")}
-        </span>
-      )}
-      {schedCount > 0 && (
-        <span
-          title={`Scheduled for: ${status.scheduled.join(", ")}`}
-          className="text-[10px] px-1.5 py-0.5 rounded bg-accent/15 text-accent font-medium inline-flex items-center gap-1"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-accent" />
-          Scheduled · {status.scheduled.join(", ")}
-        </span>
-      )}
-      {failedCount > 0 && (
-        <span
-          title={`Failed on: ${status.failed.join(", ")}`}
-          className="text-[10px] px-1.5 py-0.5 rounded bg-error/15 text-error font-medium inline-flex items-center gap-1"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-error" />
-          Failed · {status.failed.join(", ")}
-        </span>
-      )}
+      {posts.map((p) => {
+        const t = tone(p.status);
+        const platLabel = p.platforms.join(", ") || "—";
+        return (
+          <span
+            key={p.id}
+            className={`text-[10px] pl-1.5 pr-0.5 py-0.5 rounded font-medium inline-flex items-center gap-1 ${t.cls}`}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${t.dot}`} />
+            {t.label} · {platLabel}
+            <button
+              onClick={() => handleDelete(p)}
+              disabled={busyId === p.id || p.status === "POSTING"}
+              title={
+                p.status === "POSTING"
+                  ? "Wait for publish to finish"
+                  : "Remove from Klone (platform copy stays up)"
+              }
+              className="ml-0.5 inline-flex items-center justify-center w-4 h-4 rounded hover:bg-foreground/10 disabled:opacity-40"
+            >
+              {busyId === p.id ? (
+                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+              ) : (
+                <X className="w-2.5 h-2.5" strokeWidth={2.5} />
+              )}
+            </button>
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -212,117 +268,6 @@ function TrimDialog({
   );
 }
 
-function HighlightReelPanel({
-  jobId,
-  clipCount,
-  initialReel,
-}: {
-  jobId: string;
-  clipCount: number;
-  initialReel: {
-    path: string | null;
-    thumb: string | null;
-    hook: string | null;
-  };
-}) {
-  const [reel, setReel] = useState(initialReel);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  if (clipCount < 2) return null;
-
-  const generate = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/clips/${jobId}/highlight-reel`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ maxDurationSec: 90 }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Failed to generate");
-        return;
-      }
-      setReel({
-        path: data.reelPath,
-        thumb: `/api/uploads/clips/${jobId}/highlight-reel.jpg`,
-        hook: reel.hook,
-      });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (reel.path) {
-    return (
-      <Card className="p-5 border-accent/30 bg-gradient-to-br from-accent/5 to-card">
-        <div className="flex items-center gap-2 mb-3">
-          <Film className="w-4 h-4 text-accent" />
-          <h3 className="text-sm font-semibold">Highlight reel</h3>
-          <span className="text-[10px] text-muted-foreground">
-            top clips compiled with crossfades
-          </span>
-        </div>
-        <video
-          src={reel.path}
-          poster={reel.thumb ?? undefined}
-          controls
-          preload="metadata"
-          className="w-full rounded-lg bg-black aspect-[9/16] max-h-[600px] mx-auto"
-        />
-        {reel.hook && (
-          <p className="text-xs text-muted-foreground mt-2 text-center italic">
-            &ldquo;{reel.hook}&rdquo;
-          </p>
-        )}
-        <div className="flex gap-2 mt-3">
-          <a
-            href={reel.path}
-            download="highlight-reel.mp4"
-            className="inline-flex items-center gap-1 text-xs px-3 py-1.5 font-medium rounded-lg border border-border hover:border-accent/30 transition-colors"
-          >
-            Download reel
-          </a>
-          <Button size="sm" onClick={generate} disabled={busy} variant="outline">
-            <RefreshCcw className={`w-3.5 h-3.5 mr-1 ${busy ? "animate-spin" : ""}`} />
-            {busy ? "Re-generating…" : "Regenerate"}
-          </Button>
-        </div>
-      </Card>
-    );
-  }
-
-  return (
-    <Card className="p-5 border-accent/30 bg-gradient-to-br from-accent/5 to-card">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Film className="w-4 h-4 text-accent" />
-          <h3 className="text-sm font-semibold">Highlight reel</h3>
-        </div>
-        <Button size="sm" onClick={generate} disabled={busy}>
-          {busy ? (
-            <>
-              <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-              Generating…
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-3.5 h-3.5 mr-1" />
-              Make highlight reel
-            </>
-          )}
-        </Button>
-      </div>
-      <p className="text-xs text-muted-foreground mt-2">
-        Auto-compiles your highest-scoring clips into one ~90s reel with smooth
-        crossfades. Great for a single big-impact post.
-      </p>
-      {error && <p className="text-xs text-error mt-2">{error}</p>}
-    </Card>
-  );
-}
 
 function HookEditor({
   jobId,
@@ -817,6 +762,16 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
   const [durations, setDurations] = useState<Record<string, number>>(() =>
     Object.fromEntries(job.clips.map((c) => [c.id, c.durationSec]))
   );
+  // Per-clip Post records, keyed by clipId. Local state so deleting a Post
+  // updates the pill row without re-fetching the whole page.
+  const [clipPosts, setClipPosts] = useState<Record<string, ClipPostRecord[]>>(
+    () => Object.fromEntries(job.clips.map((c) => [c.id, c.posts])),
+  );
+  const removePost = (clipId: string, postId: string) =>
+    setClipPosts((prev) => ({
+      ...prev,
+      [clipId]: (prev[clipId] ?? []).filter((p) => p.id !== postId),
+    }));
   const [trimmingClipId, setTrimmingClipId] = useState<string | null>(null);
   const [repicking, setRepicking] = useState(false);
   const [repickErr, setRepickErr] = useState<string | null>(null);
@@ -898,30 +853,42 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
         clipCount={job.clips.filter((c) => c.videoPath).length}
       />
 
-      <HighlightReelPanel
-        jobId={job.id}
-        clipCount={job.clips.filter((c) => c.videoPath).length}
-        initialReel={{
-          path: job.highlightReelPath,
-          thumb: job.highlightReelThumb,
-          hook: job.highlightReelHook,
-        }}
-      />
-
       {job.clips.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted-foreground">
           No clips were picked from this source.
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {job.clips.map((clip, i) => (
-            <Card key={clip.id} className="p-4 space-y-3">
+          {job.clips.map((clip, i) => {
+            const posts = clipPosts[clip.id] ?? [];
+            const livePlatforms = posts
+              .filter((p) => p.status === "POSTED" || p.status === "PARTIAL")
+              .flatMap((p) => p.platforms);
+            const hasLive = livePlatforms.length > 0;
+            const hasScheduled = posts.some(
+              (p) => p.status === "SCHEDULED" || p.status === "POSTING",
+            );
+            const hasFailed = posts.some((p) => p.status === "FAILED");
+            // Border + ring colour cascades by priority: live > failed > scheduled.
+            // Live wins because "it's out there" is the most actionable signal.
+            const cardAccent = hasLive
+              ? "border-success/50 ring-1 ring-success/30 bg-success/[0.02]"
+              : hasFailed
+                ? "border-error/50 ring-1 ring-error/30"
+                : hasScheduled
+                  ? "border-accent/40 ring-1 ring-accent/20"
+                  : "";
+            return (
+            <Card key={clip.id} className={`p-4 space-y-3 ${cardAccent}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0 flex-wrap">
                   <span className="text-xs text-muted-foreground">
                     Clip {i + 1}
                   </span>
-                  <ClipPostStatus status={clip.postStatus} />
+                  <ClipPostStatus
+                    posts={posts}
+                    onDelete={(postId) => removePost(clip.id, postId)}
+                  />
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <Flame
@@ -933,56 +900,86 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
                 </div>
               </div>
 
-              {clip.videoPath ? (
-                <video
-                  src={clip.videoPath}
-                  poster={clip.thumbnailPath ?? undefined}
-                  controls
-                  preload="metadata"
-                  className="w-full rounded-lg bg-black aspect-[9/16] max-h-[480px] mx-auto"
-                />
-              ) : clip.thumbnailPath ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={clip.thumbnailPath}
-                  alt=""
-                  className="w-full rounded-lg object-cover aspect-[9/16] max-h-[480px] mx-auto"
-                />
-              ) : (
-                <div className="w-full rounded-lg bg-card border border-border aspect-[9/16] max-h-[480px] flex items-center justify-center text-xs text-muted-foreground">
-                  Cutting…
-                </div>
-              )}
-
-              <HookEditor
-                jobId={job.id}
-                clipId={clip.id}
-                value={titles[clip.id] ?? clip.hookTitle}
-                onChange={(newTitle) =>
-                  setTitles((prev) => ({ ...prev, [clip.id]: newTitle }))
-                }
-              />
-              <HookPicker
-                jobId={job.id}
-                clip={{
-                  ...clip,
-                  hookTitle: titles[clip.id] ?? clip.hookTitle,
-                  hookVariants: variants[clip.id] ?? clip.hookVariants,
-                }}
-                onUpdate={(newTitle) =>
-                  setTitles((prev) => ({ ...prev, [clip.id]: newTitle }))
-                }
-                onVariantsRefresh={(newVariants) =>
-                  setVariants((prev) => ({ ...prev, [clip.id]: newVariants }))
-                }
-              />
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <span className="inline-flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {formatTime(clip.startSec)} – {formatTime(clip.endSec)}
-                </span>
-                <span>· {Math.round(clip.durationSec)}s</span>
+              <div className="relative">
+                {clip.videoPath ? (
+                  <video
+                    src={clip.videoPath}
+                    poster={clip.thumbnailPath ?? undefined}
+                    controls
+                    preload="metadata"
+                    playsInline
+                    muted
+                    className="w-full rounded-lg bg-black aspect-[9/16] max-h-[480px] mx-auto"
+                  />
+                ) : clip.thumbnailPath ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={clip.thumbnailPath}
+                    alt=""
+                    className="w-full rounded-lg object-cover aspect-[9/16] max-h-[480px] mx-auto"
+                  />
+                ) : (
+                  <div className="w-full rounded-lg bg-card border border-border aspect-[9/16] max-h-[480px] flex items-center justify-center text-xs text-muted-foreground">
+                    Cutting…
+                  </div>
+                )}
+                {hasLive && (
+                  <div
+                    title={`Live on ${livePlatforms.join(", ")}`}
+                    className="absolute top-2 right-2 z-10 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-success text-white text-[10px] font-semibold shadow-lg pointer-events-none"
+                  >
+                    <Check className="w-3 h-3" strokeWidth={3} />
+                    Posted
+                  </div>
+                )}
               </div>
+
+              {job.mode === "EXPLAINER" ? (
+                // Explainer videos are fully composed — there's no hook
+                // to edit and no source range to display. Show the AI
+                // title as static + a small "AI Narration" indicator.
+                <div className="space-y-1.5">
+                  <h3 className="text-sm font-semibold leading-snug">
+                    {clip.hookTitle}
+                  </h3>
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <Sparkles className="w-3 h-3 text-success" />
+                    <span>AI narration · {Math.round(clip.durationSec)}s</span>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <HookEditor
+                    jobId={job.id}
+                    clipId={clip.id}
+                    value={titles[clip.id] ?? clip.hookTitle}
+                    onChange={(newTitle) =>
+                      setTitles((prev) => ({ ...prev, [clip.id]: newTitle }))
+                    }
+                  />
+                  <HookPicker
+                    jobId={job.id}
+                    clip={{
+                      ...clip,
+                      hookTitle: titles[clip.id] ?? clip.hookTitle,
+                      hookVariants: variants[clip.id] ?? clip.hookVariants,
+                    }}
+                    onUpdate={(newTitle) =>
+                      setTitles((prev) => ({ ...prev, [clip.id]: newTitle }))
+                    }
+                    onVariantsRefresh={(newVariants) =>
+                      setVariants((prev) => ({ ...prev, [clip.id]: newVariants }))
+                    }
+                  />
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {formatTime(clip.startSec)} – {formatTime(clip.endSec)}
+                    </span>
+                    <span>· {Math.round(clip.durationSec)}s</span>
+                  </div>
+                </>
+              )}
               {clip.reason && (
                 <p className="text-xs text-muted-foreground italic">
                   {clip.reason}
@@ -1013,15 +1010,17 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
                       <Send className="w-3.5 h-3.5 mr-1" />
                       Send to Compose
                     </Button>
-                    <button
-                      onClick={() =>
-                        setTrimmingClipId(trimmingClipId === clip.id ? null : clip.id)
-                      }
-                      className="inline-flex items-center gap-1 text-xs px-3 py-1.5 font-medium rounded-lg border border-border hover:border-accent/30 transition-colors"
-                    >
-                      <Scissors className="w-3.5 h-3.5" />
-                      Trim
-                    </button>
+                    {job.mode !== "EXPLAINER" && (
+                      <button
+                        onClick={() =>
+                          setTrimmingClipId(trimmingClipId === clip.id ? null : clip.id)
+                        }
+                        className="inline-flex items-center gap-1 text-xs px-3 py-1.5 font-medium rounded-lg border border-border hover:border-accent/30 transition-colors"
+                      >
+                        <Scissors className="w-3.5 h-3.5" />
+                        Trim
+                      </button>
+                    )}
                     <ShareButton
                       jobId={job.id}
                       clipId={clip.id}
@@ -1046,7 +1045,8 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
                 />
               )}
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

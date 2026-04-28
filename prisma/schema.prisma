@@ -34,7 +34,7 @@ model User {
   clipperTimezone        String?
   /** Caption style: "classic" (yellow word highlight + black box, default),
     * "bold" (large yellow text, no box), "minimal" (small white text). */
-  clipperCaptionStyle    String  @default("classic")
+  clipperCaptionStyle    String  @default("bold")
   /** Optional handle/text shown as branded end card on last ~1.5s of each
     * clip (e.g. "@gillpixipace"). Empty/null disables the end card. */
   clipperEndCardText     String?
@@ -42,6 +42,14 @@ model User {
     * prepended to AI-generated tags during auto-distribute, deduplicated,
     * capped at platform's max count. Empty = AI tags only. */
   clipperDefaultHashtags String?
+  /** Path under .uploads/voices/ to a user-uploaded 5-15s voice clip used
+    * as the F5-TTS reference for explainer narration. The clip's prosody +
+    * timbre are mimicked, so an energetic reference produces energetic
+    * narration. Empty = use F5-TTS's built-in default narrator voice. */
+  f5RefAudioPath  String?
+  /** Verbatim transcript of f5RefAudioPath. F5-TTS needs this for phoneme
+    * alignment during cloning. Required if f5RefAudioPath is set. */
+  f5RefAudioText  String?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   socialAccounts      SocialAccount[]
@@ -98,6 +106,10 @@ model ClipJob {
   stage           String?
   stageDetail     String?
   progress        Int       @default(0)
+  /** Pipeline mode: "CLIP" extracts source segments; "EXPLAINER" generates
+    * an original narration video using rapid silent source cutaways under
+    * AI-narrated commentary (zero source audio = no Content ID match). */
+  mode            String    @default("CLIP")
   optCaptions     Boolean   @default(true)
   optMusic        Boolean   @default(true)
   optPunchZooms   Boolean   @default(true)
@@ -109,10 +121,6 @@ model ClipJob {
   /** Cached transcript JSON (segment-level) so re-pick can skip download
     * + transcribe. Stored only after the first successful pipeline run. */
   cachedTranscript String?
-  /** Path to a generated highlight reel (compilation of top clips), if any. */
-  highlightReelPath  String?
-  highlightReelThumb String?
-  highlightReelHook  String?
   error           String?
   startedAt       DateTime?
   finishedAt      DateTime?
