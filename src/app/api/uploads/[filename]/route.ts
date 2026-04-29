@@ -3,6 +3,7 @@ import { readFile, stat } from "fs/promises";
 import path from "path";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { verifyMediaSignature } from "@/lib/platforms/types";
 
 const mimeTypes: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -25,11 +26,6 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ filename: string }> }
 ) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
-
   const { filename } = await context.params;
 
   // Path traversal guard
@@ -37,15 +33,31 @@ export async function GET(
     return NextResponse.json({ error: "Invalid filename" }, { status: 400 });
   }
 
-  // Ownership check: require a Post owned by the session user that
-  // references this filename in its mediaUrl.
-  const expectedUrl = `/api/uploads/${filename}`;
-  const owns = await prisma.post.findFirst({
-    where: { userId: session.id, mediaUrl: expectedUrl },
-    select: { id: true },
-  });
-  if (!owns) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  // Auth: accept EITHER a valid session (browser) OR a valid signed URL
+  // (external platforms — Meta, etc. fetch without cookies). Signed URLs
+  // are path-scoped + 1h-expiring so they can't enumerate other media.
+  const sigToken = request.nextUrl.searchParams.get("t");
+  const expiresAt = parseInt(request.nextUrl.searchParams.get("e") || "0", 10);
+  const mediaPath = `/api/uploads/${filename}`;
+  const signed = sigToken
+    ? verifyMediaSignature(mediaPath, expiresAt, sigToken)
+    : false;
+
+  if (!signed) {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+    // Ownership check: require a Post owned by the session user that
+    // references this filename in its mediaUrl.
+    const expectedUrl = `/api/uploads/${filename}`;
+    const owns = await prisma.post.findFirst({
+      where: { userId: session.id, mediaUrl: expectedUrl },
+      select: { id: true },
+    });
+    if (!owns) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
   }
 
   try {

@@ -3,6 +3,7 @@ import { readFile, stat } from "fs/promises";
 import path from "path";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { verifyMediaSignature } from "@/lib/platforms/types";
 
 const mimeTypes: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -24,11 +25,6 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ jobId: string; filename: string }> }
 ) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
-
   const { jobId, filename } = await context.params;
 
   if (
@@ -40,13 +36,30 @@ export async function GET(
     return NextResponse.json({ error: "Invalid path" }, { status: 400 });
   }
 
-  // Ownership check: ClipJob must belong to session user
-  const job = await prisma.clipJob.findFirst({
-    where: { id: jobId, userId: session.id },
-    select: { id: true },
-  });
-  if (!job) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  // Auth: accept EITHER a valid session (browser) OR a valid signed URL
+  // (external platforms — Meta, etc. fetch the video without cookies).
+  // The signed URL is path-scoped + expires after 1h so it can't be
+  // replayed to download another user's clips.
+  const sigToken = request.nextUrl.searchParams.get("t");
+  const expiresAt = parseInt(request.nextUrl.searchParams.get("e") || "0", 10);
+  const mediaPath = `/api/uploads/clips/${jobId}/${filename}`;
+  const signed = sigToken
+    ? verifyMediaSignature(mediaPath, expiresAt, sigToken)
+    : false;
+
+  if (!signed) {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+    // Ownership check: ClipJob must belong to session user
+    const job = await prisma.clipJob.findFirst({
+      where: { id: jobId, userId: session.id },
+      select: { id: true },
+    });
+    if (!job) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
   }
 
   try {
