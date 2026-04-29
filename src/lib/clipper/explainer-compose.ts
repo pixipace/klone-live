@@ -306,21 +306,28 @@ export async function composeExplainer(
       ? `,fade=in:st=0:d=0.07:color=white`
       : "";
 
+    // Concat-compat suffix: every per-shot chain must end with the SAME
+    // pixel format, SAR, and timebase or `concat=n=N` produces zero
+    // packets and libx264 reports "Could not open encoder before EOF".
+    // setsar=1, format=yuv420p, settb=AVTB normalize all three.
+    const concatTail = `,setsar=1,format=yuv420p,settb=AVTB[v${i}]`;
+
     let vIn: string;
     if (isImage) {
-      // IMAGE shot — load the looped image, scale-pad to 9:16, trim to
-      // narration duration, apply Ken Burns + grade + vignette + flash.
-      // No face-crop (image is already a curated photo, not a wide source).
+      // IMAGE shot — load the looped image (input-level `-loop 1` already
+      // produces the infinite stream), scale-pad to 9:16, trim to narration
+      // duration, apply Ken Burns + grade + vignette + flash. No face-crop
+      // (image is already a curated photo, not a wide source).
       const imgIdx = shotImageInputIdx[i]!;
       vIn =
-        `[${imgIdx}:v]loop=loop=-1:size=1:start=0,trim=duration=${playDur.toFixed(3)},setpts=PTS-STARTPTS,fps=${fps},` +
+        `[${imgIdx}:v]trim=duration=${playDur.toFixed(3)},setpts=PTS-STARTPTS,fps=${fps},` +
         `scale=${TARGET_W}:${TARGET_H}:force_original_aspect_ratio=increase,` +
         `crop=${TARGET_W}:${TARGET_H},` +
         `${zoompanExpr},` +
         `eq=contrast=1.08:saturation=1.10:gamma_r=1.02:gamma_b=0.98,` +
         `vignette=PI/4.5` +
         flashFilter +
-        `[v${i}]`;
+        concatTail;
     } else {
       // SOURCE shot — speaker-tracking crop when faceCrop provided so
       // the speaker stays in frame on 16:9 → 9:16 conversion. Falls back
@@ -339,14 +346,14 @@ export async function composeExplainer(
           `crop=${TARGET_W}:${TARGET_H}`;
       }
       vIn =
-        `[0:v]trim=start=${seg.startSec.toFixed(3)}:duration=${playDur.toFixed(3)},setpts=PTS-STARTPTS,` +
+        `[0:v]trim=start=${seg.startSec.toFixed(3)}:duration=${playDur.toFixed(3)},setpts=PTS-STARTPTS,fps=${fps},` +
         cropChain +
         padFilter +
         `,${zoompanExpr},` +
         `eq=contrast=1.08:saturation=1.10:gamma_r=1.02:gamma_b=0.98,` +
         `vignette=PI/4.5` +
         flashFilter +
-        `[v${i}]`;
+        concatTail;
     }
     vfParts.push(vIn);
     vLabels.push(`[v${i}]`);
@@ -464,11 +471,21 @@ export async function composeExplainer(
     const child = spawn("ffmpeg", args);
     let stderr = "";
     child.stderr.on("data", (d) => (stderr += d.toString()));
-    child.on("close", (code) =>
-      code === 0
-        ? resolve()
-        : reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-600)}`)),
-    );
+    child.on("close", async (code) => {
+      if (code === 0) return resolve();
+      // Persist the full command + stderr next to the broken output so we
+      // can reproduce the failure manually instead of guessing from a
+      // truncated log line.
+      try {
+        const { writeFile } = await import("fs/promises");
+        const debugPath = path.join(outDir, `${basename}.ffmpeg-debug.txt`);
+        await writeFile(
+          debugPath,
+          `# ffmpeg exit ${code}\n# command:\nffmpeg ${args.map((a) => (a.includes(" ") ? `'${a}'` : a)).join(" ")}\n\n# stderr:\n${stderr}`,
+        );
+      } catch {}
+      reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-600)}`));
+    });
     child.on("error", reject);
   });
 
