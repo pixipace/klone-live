@@ -14,6 +14,7 @@ import {
   ChevronUp,
   FileText,
   Camera,
+  HelpCircle,
 } from "lucide-react";
 
 interface MetaPage {
@@ -54,12 +55,26 @@ interface CombinedStatus {
   expiresAt?: string | null;
 }
 
+/** Per-platform setup requirements that the USER must complete on the
+ *  platform's own settings before Klone can post on their behalf. These
+ *  are real platform restrictions, not Klone bugs — TikTok app audit,
+ *  Instagram Business profile, etc. */
+type PlatformRequirements = {
+  /** One-line summary shown collapsed. */
+  summary: string;
+  /** Numbered steps shown when expanded. */
+  steps: string[];
+  /** Optional external link for more help. */
+  helpUrl?: string;
+};
+
 interface PlatformCard {
   id: string;
   name: string;
   color: string;
   oauth: string | null;
   description: string;
+  requirements?: PlatformRequirements;
 }
 
 const PLATFORM_CARDS: PlatformCard[] = [
@@ -69,6 +84,16 @@ const PLATFORM_CARDS: PlatformCard[] = [
     color: "#00f2ea",
     oauth: "/api/auth/tiktok",
     description: "Post videos to your TikTok account",
+    requirements: {
+      summary: "Posts go to your TikTok inbox as drafts — tap Publish in the app to post.",
+      steps: [
+        "Open TikTok and make sure you can sign in normally — Klone uses the same login.",
+        "When Klone sends a video, it appears in your TikTok inbox under \"Drafts\" or \"From other apps.\"",
+        "Open the TikTok app, tap the notification, edit if needed, then tap Post to publish.",
+        "Why drafts and not direct posting? TikTok requires app audit (1-2 weeks of review) before allowing direct posts to public accounts. We're in audit; until approved, the inbox flow is the only option.",
+      ],
+      helpUrl: "https://developers.tiktok.com/doc/content-sharing-guidelines/",
+    },
   },
   {
     id: "meta",
@@ -76,6 +101,17 @@ const PLATFORM_CARDS: PlatformCard[] = [
     color: "#1877f2",
     oauth: "/api/auth/facebook",
     description: "Connect Facebook Pages and Instagram Business accounts",
+    requirements: {
+      summary: "Need: a Facebook Page (not personal profile) + an Instagram Business or Creator profile linked to that Page.",
+      steps: [
+        "FACEBOOK: You need a Facebook Page (not your personal profile). Create one at facebook.com/pages/create if you don't have one.",
+        "INSTAGRAM: Open Instagram → Settings → Account → Switch to Professional Account → pick \"Business\" or \"Creator.\" Personal accounts cannot post via API.",
+        "LINK THEM: In your Facebook Page settings → Linked accounts → connect your Instagram Business profile.",
+        "Klone's Meta connection asks for Page + Instagram permissions in one OAuth flow. Pick the right Page when prompted.",
+        "If posts fail with \"reconnect your account,\" disconnect here and reconnect — usually means the Page or IG link was changed on Facebook's side.",
+      ],
+      helpUrl: "https://help.instagram.com/502981923235522",
+    },
   },
   {
     id: "twitter",
@@ -90,6 +126,15 @@ const PLATFORM_CARDS: PlatformCard[] = [
     color: "#0077b5",
     oauth: "/api/auth/linkedin",
     description: "Post to your LinkedIn profile and company pages",
+    requirements: {
+      summary: "Standard LinkedIn account works. Token expires every 60 days — re-connect when prompted.",
+      steps: [
+        "Any LinkedIn account works — personal or company. No special profile setup needed.",
+        "LinkedIn does not provide refresh tokens. Your connection expires after 60 days; Klone shows an \"expires Nd — reconnect\" warning when it's getting close.",
+        "Just click Disconnect → Connect again to refresh. Takes 5 seconds.",
+        "For posting to a Company Page (not your profile), make sure you're an admin of the Page when you authorize.",
+      ],
+    },
   },
   {
     id: "youtube",
@@ -97,6 +142,16 @@ const PLATFORM_CARDS: PlatformCard[] = [
     color: "#ff0000",
     oauth: "/api/auth/google",
     description: "Upload Shorts and videos to your YouTube channel",
+    requirements: {
+      summary: "Need a YouTube channel attached to your Google account. Videos publish as Shorts when vertical and under 60s.",
+      steps: [
+        "Make sure your Google account has a YouTube channel — visit youtube.com and create one if prompted.",
+        "Klone authorizes via Google OAuth (already verified by Google so the consent screen is clean).",
+        "Klone uploads as PUBLIC by default. To upload as Unlisted/Private, change the visibility under publishing prefs.",
+        "First few uploads from a new channel may go through YouTube's spam review — totally normal, takes a few minutes to appear publicly.",
+        "If your channel has a daily upload quota (rare for personal channels), Klone respects YouTube's API quota and will surface the error if hit.",
+      ],
+    },
   },
 ];
 
@@ -128,6 +183,7 @@ function AccountsContent() {
   const [loading, setLoading] = useState(true);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [metaExpanded, setMetaExpanded] = useState(false);
+  const [helpExpandedFor, setHelpExpandedFor] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
 
   const handleSelect = async (
@@ -328,58 +384,105 @@ function AccountsContent() {
                   </div>
                 </div>
 
-                {isConnected ? (
-                  <div className="flex gap-2 shrink-0">
-                    {isMeta && metaTotal > 0 && (
+                <div className="flex gap-2 shrink-0 items-center">
+                  {card.requirements && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title="Setup requirements"
+                      onClick={() =>
+                        setHelpExpandedFor(helpExpandedFor === card.id ? null : card.id)
+                      }
+                    >
+                      <HelpCircle className="w-4 h-4" />
+                    </Button>
+                  )}
+                  {isConnected ? (
+                    <>
+                      {isMeta && metaTotal > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setMetaExpanded(!metaExpanded)}
+                        >
+                          {metaExpanded ? (
+                            <ChevronUp className="w-4 h-4" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4" />
+                          )}
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm">
+                        <ExternalLink className="w-4 h-4" />
+                      </Button>
                       <Button
-                        variant="ghost"
+                        variant="danger"
                         size="sm"
-                        onClick={() => setMetaExpanded(!metaExpanded)}
+                        onClick={() => handleDisconnect(card.id)}
+                        disabled={disconnecting === card.id}
                       >
-                        {metaExpanded ? (
-                          <ChevronUp className="w-4 h-4" />
+                        {disconnecting === card.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
-                          <ChevronDown className="w-4 h-4" />
+                          <>
+                            <Unplug className="w-4 h-4 mr-1" />
+                            Disconnect
+                          </>
                         )}
                       </Button>
-                    )}
-                    <Button variant="ghost" size="sm">
-                      <ExternalLink className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => handleDisconnect(card.id)}
-                      disabled={disconnecting === card.id}
+                    </>
+                  ) : card.oauth ? (
+                    <a
+                      href={card.oauth}
+                      className="shrink-0 inline-flex items-center justify-center text-sm px-4 py-2 font-medium rounded-lg border border-border hover:border-border-hover text-foreground bg-transparent transition-colors cursor-pointer"
                     >
-                      {disconnecting === card.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <>
-                          <Unplug className="w-4 h-4 mr-1" />
-                          Disconnect
-                        </>
-                      )}
+                      Connect
+                    </a>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled
+                      className="shrink-0"
+                    >
+                      Soon
                     </Button>
-                  </div>
-                ) : card.oauth ? (
-                  <a
-                    href={card.oauth}
-                    className="shrink-0 inline-flex items-center justify-center text-sm px-4 py-2 font-medium rounded-lg border border-border hover:border-border-hover text-foreground bg-transparent transition-colors cursor-pointer"
-                  >
-                    Connect
-                  </a>
-                ) : (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    disabled
-                    className="shrink-0"
-                  >
-                    Soon
-                  </Button>
-                )}
+                  )}
+                </div>
               </div>
+
+              {/* Setup requirements — what the user must do on the platform's
+                  side before/after connecting. Always available regardless
+                  of connection state so users can refer back when something
+                  breaks. */}
+              {card.requirements && helpExpandedFor === card.id && (
+                <div className="mt-4 pt-4 border-t border-border">
+                  <div className="bg-accent/5 border border-accent/20 rounded-lg p-4">
+                    <p className="text-sm font-medium text-foreground mb-2">
+                      Setup requirements
+                    </p>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      {card.requirements.summary}
+                    </p>
+                    <ol className="space-y-2 text-xs text-foreground/90 list-decimal list-inside marker:text-accent">
+                      {card.requirements.steps.map((step, idx) => (
+                        <li key={idx} className="leading-relaxed">{step}</li>
+                      ))}
+                    </ol>
+                    {card.requirements.helpUrl && (
+                      <a
+                        href={card.requirements.helpUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 mt-3 text-xs text-accent hover:underline"
+                      >
+                        Platform docs
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Expanded Meta asset list */}
               {isMeta &&
