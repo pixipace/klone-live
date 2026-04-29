@@ -1,14 +1,14 @@
 /**
  * Explainer visual allocator — turn a list of LineVisual plans into
- * concrete files the composer can render. Handles three sources:
+ * concrete files the composer can render. Priority (cheapest first):
  *
- *   1. image  — search Wikipedia/Pexels/Pixabay via broll-search.ts,
- *               score with Gemma vision, download to cache.
- *   2. ai     — fal.ai image generation for abstract concepts.
- *               Cached by SHA1(prompt). Hard cap: 2 per explainer.
- *   3. source — fall through to a source-video segment (handled by the
- *               existing pickSourceSegments allocator). Marked here as
- *               sentinel + the pipeline fills the segment in.
+ *   1. image  — ALWAYS try first. Free Wikipedia/Pexels/Pixabay search
+ *               via broll-search.ts, scored with Gemma vision.
+ *   2. ai     — Only when free search returned nothing AND Gemma's plan
+ *               flagged the concept as "ai" (abstract/un-searchable).
+ *               fal.ai flux/schnell ~$0.003/img. Cached by SHA1(prompt).
+ *   3. source — Last resort: fall through to a source-video segment
+ *               (handled by pickSourceSegments). Marked here as sentinel.
  *
  * Also enforces ANCHOR rule: the FIRST shot, ONE MIDDLE shot, and the
  * LAST shot are forced to "source" so the viewer knows the explainer is
@@ -204,16 +204,11 @@ export async function resolveVisuals(
       continue;
     }
 
-    if (plan.kind === "ai") {
-      const aiPath = await generateAiImage(plan.query);
-      if (aiPath) {
-        out.push({ kind: "ai", filePath: aiPath, attribution: "AI-generated" });
-        continue;
-      }
-      // Fall through to image search if AI fails
-    }
-
-    // image kind (or AI fallback)
+    // ALWAYS try free image search first (Wikipedia/Pexels/Pixabay).
+    // Gemma's "ai" hint only matters as a fallback signal — if the free
+    // sources have something good, we use it. Only escalate to paid
+    // fal.ai when free search returned nothing usable AND Gemma flagged
+    // the concept as un-searchable.
     try {
       const img = await resolveImage(plan.query, plan.type);
       if (img) {
@@ -222,6 +217,15 @@ export async function resolveVisuals(
       }
     } catch (err) {
       console.warn(`[explainer-visuals] image search failed for "${plan.query}":`, err);
+    }
+
+    // Free search struck out. If Gemma planned "ai", try fal.ai now.
+    if (plan.kind === "ai") {
+      const aiPath = await generateAiImage(plan.query);
+      if (aiPath) {
+        out.push({ kind: "ai", filePath: aiPath, attribution: "AI-generated" });
+        continue;
+      }
     }
 
     // Last resort: source segment
