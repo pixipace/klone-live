@@ -460,7 +460,7 @@ export async function composeExplainer(
     "-profile:v", "main",
     "-level", "4.0",
     "-c:a", "aac",
-    "-b:a", "128k",
+    "-b:a", "192k",      // bumped from 128k — narration is the centerpiece
     "-ar", "44100",      // some Safari builds prefer 44100 over 24000
     "-movflags", "+faststart",
     "-t", totalDur.toFixed(2),
