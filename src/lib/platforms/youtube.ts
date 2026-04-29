@@ -117,11 +117,10 @@ export async function postToYouTube({
           categoryId: "22",
         },
         status: {
-          // We always request "public". Until the OAuth app is fully
-          // verified by Google, YouTube silently quarantines uploads from
-          // unverified apps as private (visible to the uploader, hidden
-          // from public). Once verification completes, the same request
-          // starts publishing publicly with no code change required.
+          // App verified by Google as of 2026-04-28 — uploads now go
+          // straight to public. YOUTUBE_PRIVACY_OVERRIDE env var still
+          // works as an escape hatch (e.g. set to "private" or "unlisted"
+          // during testing).
           privacyStatus: process.env.YOUTUBE_PRIVACY_OVERRIDE || "public",
           selfDeclaredMadeForKids: false,
           embeddable: true,
@@ -158,7 +157,6 @@ export async function postToYouTube({
     success: true,
     id: uploadData.id,
     url: `https://youtube.com/shorts/${uploadData.id}`,
-    message:
-      "Video uploaded to YouTube as Short (public — may show as private until OAuth verification completes)",
+    message: "Video uploaded to YouTube as Short (public)",
   };
 }
