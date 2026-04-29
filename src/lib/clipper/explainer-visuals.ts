@@ -122,33 +122,44 @@ async function generateAiImage(prompt: string): Promise<string | null> {
       console.warn(`[explainer-visuals] fal.ai submit ${submitRes.status}: ${errBody.slice(0, 200)}`);
       return null;
     }
-    // schnell synchronous response includes images directly
-    const data = (await submitRes.json()) as { images?: { url: string }[]; status_url?: string };
+    // fal.ai queue API: submit returns {status_url, response_url, ...}.
+    // Poll status_url until status === "COMPLETED" (or capped attempts),
+    // then fetch response_url for the actual image data.
+    const data = (await submitRes.json()) as {
+      status?: string;
+      images?: { url: string }[];
+      status_url?: string;
+      response_url?: string;
+    };
     let imageUrl: string | null = null;
+    // Sometimes flux/schnell returns inline images on the submit (sync mode)
     if (data.images && data.images.length > 0) {
       imageUrl = data.images[0].url;
-    } else if (data.status_url) {
-      // Async path: poll until done. fal-ai/flux-schnell normally
-      // returns synchronous, but handle queue mode just in case.
+    } else if (data.status_url && data.response_url) {
+      const responseUrl = data.response_url;
+      // Poll status until COMPLETED. flux/schnell typically takes 1-3s.
       for (let attempt = 0; attempt < 30; attempt++) {
         await new Promise((r) => setTimeout(r, 1000));
         const pollRes = await fetch(data.status_url, {
           headers: { "Authorization": `Key ${FAL_API_KEY}` },
         });
-        const pollData = (await pollRes.json()) as { status?: string; images?: { url: string }[]; response_url?: string };
-        if (pollData.images && pollData.images.length > 0) {
-          imageUrl = pollData.images[0].url;
-          break;
-        }
-        if (pollData.response_url) {
-          const respRes = await fetch(pollData.response_url, {
+        if (!pollRes.ok) continue;
+        const pollData = (await pollRes.json()) as { status?: string };
+        if (pollData.status === "COMPLETED") {
+          // Fetch the result from response_url (separate endpoint)
+          const respRes = await fetch(responseUrl, {
             headers: { "Authorization": `Key ${FAL_API_KEY}` },
           });
-          const respData = (await respRes.json()) as { images?: { url: string }[] };
-          if (respData.images && respData.images.length > 0) {
-            imageUrl = respData.images[0].url;
-            break;
+          if (respRes.ok) {
+            const respData = (await respRes.json()) as { images?: { url: string }[] };
+            if (respData.images && respData.images.length > 0) {
+              imageUrl = respData.images[0].url;
+            }
           }
+          break;
+        }
+        if (pollData.status === "FAILED" || pollData.status === "CANCELLED") {
+          break;
         }
       }
     }
