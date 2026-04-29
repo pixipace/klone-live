@@ -13,14 +13,17 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium",
+        // Tighter padding, smaller text — EL badges are subtle markers,
+        // not buttons. Solid-tinted backgrounds (no borders) read cleaner
+        // on light surfaces.
+        "inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium tracking-tight",
         {
           "bg-card text-muted-foreground border border-border":
             variant === "default",
-          "bg-success/10 text-success": variant === "success",
-          "bg-warning/10 text-warning": variant === "warning",
-          "bg-error/10 text-error": variant === "error",
-          "bg-accent/10 text-accent": variant === "accent",
+          "bg-success-soft text-success": variant === "success",
+          "bg-warning-soft text-warning": variant === "warning",
+          "bg-error-soft text-error": variant === "error",
+          "bg-accent-soft text-accent": variant === "accent",
         },
         className
       )}

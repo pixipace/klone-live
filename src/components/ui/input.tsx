@@ -18,10 +18,13 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         <input
           ref={ref}
           className={cn(
-            "w-full bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted",
-            "focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent",
-            "transition-colors",
-            error && "border-error focus:ring-error/50 focus:border-error",
+            // White surface, sharp 6px radius, refined hover state
+            "w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted",
+            "hover:border-border-hover",
+            // Focus: subtle accent ring, NOT chunky
+            "focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent",
+            "transition-all",
+            error && "border-error focus:ring-error focus:border-error",
             className
           )}
           {...props}

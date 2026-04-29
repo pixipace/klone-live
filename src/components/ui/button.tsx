@@ -12,22 +12,31 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         className={cn(
-          "inline-flex items-center justify-center font-medium rounded-lg transition-colors disabled:opacity-50 disabled:pointer-events-none",
+          // Base — sharp 6px radius, semibold weight, snappy 150ms transitions
+          "inline-flex items-center justify-center font-medium rounded-md transition-all disabled:opacity-50 disabled:pointer-events-none active:scale-[0.98]",
           {
-            "bg-accent hover:bg-accent-hover text-white": variant === "primary",
+            // PRIMARY: black-on-white aesthetic — solid foreground bg,
+            // inverted text. EL-style restraint: accent reserved for
+            // links + brand moments, not every CTA.
+            "bg-foreground hover:bg-foreground-secondary text-background": variant === "primary",
+            // SECONDARY: white card with subtle border, hovers to surface
             "bg-card hover:bg-card-hover text-foreground border border-border":
               variant === "secondary",
-            "border border-border hover:border-border-hover text-foreground bg-transparent":
+            // OUTLINE: transparent with border — for tertiary actions
+            "border border-border hover:border-border-hover hover:bg-card text-foreground bg-transparent":
               variant === "outline",
-            "text-muted-foreground hover:text-foreground bg-transparent":
+            // GHOST: text-only, surfaces on hover. Toolbar-style.
+            "text-muted-foreground hover:text-foreground hover:bg-card bg-transparent":
               variant === "ghost",
-            "bg-error/10 hover:bg-error/20 text-error border border-error/20":
+            // DANGER: muted red, reserved for destructive actions only
+            "bg-error-soft hover:bg-error/15 text-error border border-error/20":
               variant === "danger",
           },
           {
-            "text-xs px-3 py-1.5": size === "sm",
-            "text-sm px-4 py-2": size === "md",
-            "text-base px-6 py-3": size === "lg",
+            // Sharper, tighter sizing than before — EL uses small buttons
+            "text-xs px-2.5 py-1.5 gap-1.5": size === "sm",
+            "text-sm px-3.5 py-2 gap-2": size === "md",
+            "text-sm px-5 py-2.5 gap-2": size === "lg",
           },
           className
         )}
