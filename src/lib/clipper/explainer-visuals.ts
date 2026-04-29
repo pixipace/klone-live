@@ -34,6 +34,13 @@ export type ResolvedVisual =
       filePath: string;
       /** Optional attribution string for the on-screen credit. */
       attribution?: string | null;
+      /** Optional SECOND candidate for multi-shot splitting. When the
+       *  narration line is long (>3.5s) the pipeline splits the audio
+       *  in half and shows this as the second sub-shot for visual
+       *  variety. ColdFusion-style cuts every 1-3s instead of holding
+       *  the same image for 5-7s. */
+      alternateFilePath?: string;
+      alternateAttribution?: string | null;
     }
   | {
       kind: "source";
@@ -87,7 +94,15 @@ function brandifyQuery(query: string): string {
  * Resolve a planned visual to a concrete file path. Returns null if
  * everything fails (caller falls back to source).
  */
-async function resolveImage(query: string, type: LineVisual["type"]): Promise<{ filePath: string; attribution: string | null } | null> {
+async function resolveImage(
+  query: string,
+  type: LineVisual["type"],
+): Promise<{
+  filePath: string;
+  attribution: string | null;
+  alternateFilePath?: string;
+  alternateAttribution?: string | null;
+} | null> {
   // Map "concept" type to "thing" for broll-search compatibility (the
   // function signature only knows person/place/thing/event).
   const broker: "person" | "place" | "thing" | "event" =
@@ -102,13 +117,14 @@ async function resolveImage(query: string, type: LineVisual["type"]): Promise<{ 
   const candidates = await searchBroll(finalQuery, broker);
   if (candidates.length === 0) return null;
 
-  // Try candidates in order — Gemma vision scoring on each downloaded
-  // file. First one that scores >= MIN_VISION_SCORE wins.
-  for (const hit of candidates.slice(0, 3)) {
+  // Try candidates in order. Collect up to 2 that pass the vision
+  // gate — primary + alternate for multi-shot splitting on long lines.
+  const passers: { filePath: string; attribution: string | null }[] = [];
+  for (const hit of candidates.slice(0, 4)) {
+    if (passers.length >= 2) break;
     const filePath = await downloadToCache(hit.url);
     if (!filePath) continue;
 
-    // Vision score the downloaded image
     let score = 5;
     try {
       const { readFile } = await import("fs/promises");
@@ -119,10 +135,16 @@ async function resolveImage(query: string, type: LineVisual["type"]): Promise<{ 
       // If scoring fails, default to medium and proceed
     }
     if (score >= MIN_VISION_SCORE) {
-      return { filePath, attribution: hit.attribution };
+      passers.push({ filePath, attribution: hit.attribution });
     }
   }
-  return null;
+  if (passers.length === 0) return null;
+  return {
+    filePath: passers[0].filePath,
+    attribution: passers[0].attribution,
+    alternateFilePath: passers[1]?.filePath,
+    alternateAttribution: passers[1]?.attribution,
+  };
 }
 
 /**
@@ -260,7 +282,13 @@ export async function resolveVisuals(
     try {
       const img = await resolveImage(plan.query, plan.type);
       if (img) {
-        out.push({ kind: "image", filePath: img.filePath, attribution: img.attribution });
+        out.push({
+          kind: "image",
+          filePath: img.filePath,
+          attribution: img.attribution,
+          alternateFilePath: img.alternateFilePath,
+          alternateAttribution: img.alternateAttribution,
+        });
         continue;
       }
     } catch (err) {

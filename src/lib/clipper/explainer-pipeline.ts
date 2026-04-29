@@ -50,6 +50,63 @@ function renderAttributionPng(sourceTitle: string, outPath: string): Promise<voi
  * capped at 4s). Lets the visual pipeline run end-to-end without paying
  * the F5-TTS cost during iteration.
  */
+/** Probe an audio file's duration in seconds. */
+async function probeAudioDur(filePath: string): Promise<number> {
+  return new Promise((resolve) => {
+    const child = spawn("ffprobe", [
+      "-v", "error",
+      "-show_entries", "format=duration",
+      "-of", "default=noprint_wrappers=1:nokey=1",
+      filePath,
+    ]);
+    let out = "";
+    child.stdout.on("data", (d) => (out += d.toString()));
+    child.on("close", () => resolve(parseFloat(out.trim()) || 0));
+    child.on("error", () => resolve(0));
+  });
+}
+
+/** Split an audio file at the midpoint into two parts. Used for the
+ *  multi-shot-per-line trick — long narration lines (>3.5s) get split
+ *  in half so a SECOND visual can show during the back half. Real
+ *  documentary channels cut every 1-3s, not every 5-7s. */
+async function splitAudioInHalf(
+  inputPath: string,
+  durationSec: number,
+  outPart1: string,
+  outPart2: string,
+): Promise<void> {
+  const half = durationSec / 2;
+  await mkdir(path.dirname(outPart1), { recursive: true });
+  // Re-encode to PCM for both halves so the composer's per-shot audio
+  // chain treats them identically (no codec switch mid-stream).
+  for (const [start, dur, out] of [
+    [0, half, outPart1],
+    [half, durationSec - half, outPart2],
+  ] as const) {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn("ffmpeg", [
+        "-y",
+        "-ss", String(start),
+        "-i", inputPath,
+        "-t", String(dur),
+        "-c:a", "pcm_s16le",
+        "-ar", "44100",
+        "-ac", "1",
+        out,
+      ]);
+      let stderr = "";
+      child.stderr.on("data", (d) => (stderr += d.toString()));
+      child.on("close", (code) =>
+        code === 0
+          ? resolve()
+          : reject(new Error(`audio split failed: ${stderr.slice(-200)}`)),
+      );
+      child.on("error", reject);
+    });
+  }
+}
+
 /** Generate a single silent WAV of the given duration. Used for QUOTE
  *  shots — they need a narrationAudioPath slot in the shot list (the
  *  composer's input layout assumes one audio input per shot) but the
@@ -450,6 +507,55 @@ export async function runExplainerPipeline(jobId: string): Promise<void> {
             punch,
           };
         });
+
+        // ────── MULTI-SHOT EXPANSION ──────
+        // For each LONG narration line (>3.5s) that has a usable alternate
+        // visual, split the audio in half and emit TWO shots back-to-back
+        // with two DIFFERENT visuals. This is the documentary-channel
+        // cut-every-1-to-3-seconds pattern — we were holding the same
+        // image for 5-7s which felt static. With this expansion every
+        // long line shows two related-but-distinct visuals.
+        const MULTI_SHOT_THRESHOLD_SEC = 3.5;
+        const expandedShots: ExplainerShot[] = [];
+        let multiShotCount = 0;
+        for (let si = 0; si < shots.length; si++) {
+          const shot = shots[si];
+          const r = resolved[si];
+          const audioDur = await probeAudioDur(shot.narrationAudioPath);
+          const canSplit =
+            audioDur > MULTI_SHOT_THRESHOLD_SEC &&
+            shot.visual.kind === "image" &&
+            r &&
+            r.kind === "image" &&
+            r.alternateFilePath;
+          if (canSplit && r.kind === "image" && r.alternateFilePath) {
+            const dir = path.dirname(shot.narrationAudioPath);
+            const base = path.basename(shot.narrationAudioPath, path.extname(shot.narrationAudioPath));
+            const part1Path = path.join(dir, `${base}_a.wav`);
+            const part2Path = path.join(dir, `${base}_b.wav`);
+            try {
+              await splitAudioInHalf(shot.narrationAudioPath, audioDur, part1Path, part2Path);
+              expandedShots.push({ ...shot, narrationAudioPath: part1Path });
+              expandedShots.push({
+                ...shot,
+                narrationAudioPath: part2Path,
+                visual: {
+                  kind: "image",
+                  filePath: r.alternateFilePath,
+                  attribution: r.alternateAttribution ?? null,
+                },
+                punch: false, // alternate sub-shot never punches
+              });
+              multiShotCount++;
+            } catch {
+              expandedShots.push(shot);
+            }
+          } else {
+            expandedShots.push(shot);
+          }
+        }
+        shots.splice(0, shots.length, ...expandedShots);
+        console.log(`[explainer] insight ${i} multi-shot expansions: ${multiShotCount}`);
 
         // ────── DOCUMENTARY QUOTE INSERTION ──────
         // Pick 1-2 short moments where the speaker says THE most quotable
