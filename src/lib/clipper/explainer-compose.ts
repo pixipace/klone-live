@@ -78,9 +78,13 @@ export type ComposeFaceCrop = {
  * these into a single 9:16 explainer video.
  */
 export type ExplainerShot = {
-  /** TTS audio file path (WAV/MP3). */
+  /** TTS audio file path (WAV/MP3). For QUOTE shots (useSourceAudio=true)
+   *  this can be empty — the composer pulls audio from the source segment
+   *  directly. */
   narrationAudioPath: string;
-  /** Spoken text — used to render burn-in captions over the narration. */
+  /** Spoken text — used to render burn-in captions. For NARRATION shots
+   *  this is the TTS line; for QUOTE shots this is the speaker's actual
+   *  transcript words. */
   text: string;
   /** Visual to play during this narration line. Either a SOURCE segment
    *  (silent video clip from the source — used for opening/middle/close
@@ -94,6 +98,12 @@ export type ExplainerShot = {
    *  instead of the standard variable Ken Burns rotation. Mark the
    *  punchiest line per insight to give the eye a beat to land on. */
   punch?: boolean;
+  /** When true, this shot's AUDIO comes from the SOURCE VIDEO segment
+   *  (not the TTS narration). Used for "key quote" shots where we let
+   *  the speaker's real voice cut in — the documentary anchor. The
+   *  visual MUST be kind="source" when this is true. The shot's
+   *  duration becomes the source segment's duration (not narration). */
+  useSourceAudio?: boolean;
 };
 
 export type ComposeResult = {
@@ -152,12 +162,20 @@ export async function composeExplainer(
   const videoPath = path.join(outDir, `${basename}.mp4`);
   const thumbnailPath = path.join(outDir, `${basename}.jpg`);
 
-  // Probe each narration TTS file's duration — we stretch the source
-  // segment's playback rate to fit so the visual cut and the spoken
-  // sentence end at the same time.
+  // Per-shot duration:
+  //   - Narration shot: TTS audio file's duration (we play visual for
+  //     however long the narration takes).
+  //   - QUOTE shot (useSourceAudio): the source segment's duration —
+  //     play the speaker's real clip at real speed; the narration audio
+  //     path here is just a silent placeholder of matching length.
   const narrationDurations: number[] = [];
   for (const s of shots) {
-    narrationDurations.push(await probeDuration(s.narrationAudioPath));
+    if (s.useSourceAudio && s.visual.kind === "source") {
+      const seg = s.visual.segment;
+      narrationDurations.push(seg.endSec - seg.startSec);
+    } else {
+      narrationDurations.push(await probeDuration(s.narrationAudioPath));
+    }
   }
   const totalDur = narrationDurations.reduce((a, b) => a + b, 0);
 
@@ -251,10 +269,16 @@ export async function composeExplainer(
     // stretch — that visibly slow-mos people and looks AI-cheap).
     // For IMAGE shots: the input is a still PNG/JPG that we loop, so
     // playDur = narrDur exactly (no source-segment math needed).
+    // For QUOTE shots (useSourceAudio): the segment duration IS the
+    // shot duration — no stretching, no padding. Just play it raw.
     let playDur: number;
     let padDur: number;
     if (isImage) {
       playDur = narrDur;
+      padDur = 0;
+    } else if (s.useSourceAudio) {
+      const seg = (s.visual as { kind: "source"; segment: SourceSegment }).segment;
+      playDur = seg.endSec - seg.startSec;
       padDur = 0;
     } else {
       const seg = (s.visual as { kind: "source"; segment: SourceSegment }).segment;
@@ -266,7 +290,12 @@ export async function composeExplainer(
     const fps = 30;
     const totalFrames = Math.max(1, Math.round(narrDur * fps));
     let zoompanExpr: string;
-    if (s.punch) {
+    if (s.useSourceAudio) {
+      // QUOTE shots play the speaker raw — no zoom motion, no flash.
+      // The point is documentary authenticity; viewers want to feel
+      // they're watching the real interview, not an edit-heavy edit.
+      zoompanExpr = `null`;
+    } else if (s.punch) {
       // PUNCH-IN: rapid push from 1.0 → 1.15 over the first ~25% of the
       // shot, hold near peak for ~50%, ease back to 1.05 for the last
       // 25%. Lands the eye on this exact word/moment. Reserved for the
@@ -301,8 +330,9 @@ export async function composeExplainer(
       : "";
     // Punch shots get a 0.07s white fade-IN — physical impact pop that
     // viewers feel even before the punch-in zoom starts. Standard editor
-    // move ("flash cut" / "white flash transition").
-    const flashFilter = s.punch
+    // move ("flash cut" / "white flash transition"). Quote shots NEVER
+    // get this — too jarring against a real human voice cutting in.
+    const flashFilter = s.punch && !s.useSourceAudio
       ? `,fade=in:st=0:d=0.07:color=white`
       : "";
 
@@ -358,8 +388,26 @@ export async function composeExplainer(
     vfParts.push(vIn);
     vLabels.push(`[v${i}]`);
 
-    // Narration audio is input (i+1):a
-    aLabels.push(`[${i + 1}:a]`);
+    // Per-shot audio source — DIFFERENTIATED:
+    //   - Narration shots: pull from TTS input (i+1):a
+    //   - QUOTE shots (useSourceAudio): pull from source video [0:a] at
+    //     the quote's timestamps. The speaker's REAL voice plays during
+    //     these — that's the documentary anchor that makes the explainer
+    //     feel real instead of "AI narrator over photos."
+    // Both branches end with aresample=44100 so the per-shot audios are
+    // mutually compatible for the final concat (timebase + sample rate).
+    if (s.useSourceAudio && s.visual.kind === "source") {
+      const seg = s.visual.segment;
+      const segDur = seg.endSec - seg.startSec;
+      vfParts.push(
+        `[0:a]atrim=start=${seg.startSec.toFixed(3)}:duration=${segDur.toFixed(3)},asetpts=PTS-STARTPTS,aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[aSeg${i}]`,
+      );
+    } else {
+      vfParts.push(
+        `[${i + 1}:a]asetpts=PTS-STARTPTS,aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[aSeg${i}]`,
+      );
+    }
+    aLabels.push(`[aSeg${i}]`);
   }
 
   // Concat video into single base stream
@@ -372,6 +420,8 @@ export async function composeExplainer(
   //   2. SFX bed (cut whooshes) — full volume, on top of narration
   //   3. music bed (sidechain-ducked under narration) — bottom
   // Built incrementally so any combination works (no music + sfx, etc).
+  // Per-shot audio segments are normalized above (44.1kHz fltp stereo)
+  // so this concat just stitches the prepared streams.
   let lastAudio = `${aLabels.join("")}concat=n=${shots.length}:v=0:a=1[aNarr]`;
   vfParts.push(lastAudio);
   let audioOut = "[aNarr]";

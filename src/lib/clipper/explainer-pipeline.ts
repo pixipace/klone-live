@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { CLIPPER_DIRS } from "./types";
 import { downloadYouTube } from "./youtube";
 import { transcribe } from "./whisper";
-import { extractInsights, writeExplainerScript, planLineVisuals } from "@/lib/ai";
+import { extractInsights, writeExplainerScript, planLineVisuals, pickKeyQuotes } from "@/lib/ai";
 import { renderNarration } from "./explainer-tts";
 import { pickSourceSegments, detectSceneChanges } from "./explainer-segments";
 import { composeExplainer, type ExplainerShot } from "./explainer-compose";
@@ -50,6 +50,32 @@ function renderAttributionPng(sourceTitle: string, outPath: string): Promise<voi
  * capped at 4s). Lets the visual pipeline run end-to-end without paying
  * the F5-TTS cost during iteration.
  */
+/** Generate a single silent WAV of the given duration. Used for QUOTE
+ *  shots — they need a narrationAudioPath slot in the shot list (the
+ *  composer's input layout assumes one audio input per shot) but the
+ *  audio chain ignores it and pulls from the source video instead. */
+async function renderSilentWav(durationSec: number, outPath: string): Promise<void> {
+  await mkdir(path.dirname(outPath), { recursive: true });
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn("ffmpeg", [
+      "-y",
+      "-f", "lavfi",
+      "-i", "anullsrc=r=44100:cl=mono",
+      "-t", durationSec.toFixed(3),
+      "-c:a", "pcm_s16le",
+      outPath,
+    ]);
+    let stderr = "";
+    child.stderr.on("data", (d) => (stderr += d.toString()));
+    child.on("close", (code) =>
+      code === 0
+        ? resolve()
+        : reject(new Error(`silent wav gen failed: ${stderr.slice(-200)}`)),
+    );
+    child.on("error", reject);
+  });
+}
+
 async function renderSilentPlaceholders(
   lines: string[],
   outDir: string,
@@ -425,39 +451,99 @@ export async function runExplainerPipeline(jobId: string): Promise<void> {
           };
         });
 
-        const imgCount = shots.filter((s) => s.visual.kind === "image").length;
-        const srcCount = shots.length - imgCount;
+        // ────── DOCUMENTARY QUOTE INSERTION ──────
+        // Pick 1-2 short moments where the speaker says THE most quotable
+        // thing about this insight. These play with the speaker's REAL
+        // voice + face cutting in — the documentary anchor that makes the
+        // explainer feel real instead of "AI narrator over photos."
+        // (ColdFusion / Vox / How Money Works channels lead with quotes
+        //  like this; narration BRIDGES into and out of them.)
+        const quoteSegments = transcript.segments.filter(
+          (seg) =>
+            seg.end > Math.max(0, insight.startSec - 60) &&
+            seg.start < insight.endSec + 60,
+        );
+        const speakerHint = dl.title?.split(/[-–|]/)[0]?.trim().slice(0, 80) || "";
+        const keyQuotes = await pickKeyQuotes(insight, quoteSegments, speakerHint);
         console.log(
-          `[explainer] insight ${i} visuals: ${imgCount} image / ${srcCount} source`,
+          `[explainer] insight ${i} key quotes: ${keyQuotes.length}` +
+          (keyQuotes.length > 0
+            ? ` — ${keyQuotes.map((q) => `${q.startSec.toFixed(1)}-${q.endSec.toFixed(1)}s`).join(", ")}`
+            : ""),
         );
 
-        // Probe all per-line narration durations ONCE — used by SFX,
-        // captions, and graphics overlays. Avoids re-probing N times.
-        const lineDurations: number[] = [];
-        for (let k = 0; k < scriptLines.length; k++) {
+        // Insert each quote into the shot sequence at strategic positions.
+        // 1 quote → after ~30% of the script (post-hook, into tension)
+        // 2 quotes → first at ~30%, second at ~70% (twin anchors)
+        // Quote shot uses source AV directly; narrationAudioPath is a
+        // silent placeholder of matching duration (composer ignores it).
+        for (let qi = 0; qi < keyQuotes.length; qi++) {
+          const q = keyQuotes[qi];
+          const dur = q.endSec - q.startSec;
+          const placeholderPath = path.join(
+            workDir, `explainer-${i}`, "tts", `quote_${qi + 1}.wav`,
+          );
+          await renderSilentWav(dur, placeholderPath);
+          const insertFraction = keyQuotes.length === 1 ? 0.30 : (qi === 0 ? 0.30 : 0.70);
+          // Compute insert index against the CURRENT shots length so that
+          // the second quote lands at 70% of the post-first-quote sequence.
+          const insertIdx = Math.max(2, Math.min(shots.length - 1, Math.round(shots.length * insertFraction)));
+          shots.splice(insertIdx, 0, {
+            narrationAudioPath: placeholderPath,
+            text: q.text,
+            visual: {
+              kind: "source",
+              segment: { startSec: q.startSec, endSec: q.endSec, kind: "aligned" },
+            },
+            useSourceAudio: true,
+          });
+        }
+
+        const imgCount = shots.filter((s) => s.visual.kind === "image").length;
+        const quoteCount = shots.filter((s) => s.useSourceAudio).length;
+        const srcCount = shots.length - imgCount - quoteCount;
+        console.log(
+          `[explainer] insight ${i} shot mix: ${imgCount} image / ${srcCount} source / ${quoteCount} QUOTE`,
+        );
+
+        // Probe per-SHOT durations (NOT per-script-line — quote shots
+        // were spliced in above and add to the timeline). For narration
+        // shots this is the TTS WAV duration; for quote shots it's the
+        // silent placeholder which equals the source segment duration.
+        const shotDurations: number[] = [];
+        for (let k = 0; k < shots.length; k++) {
           const dur = await new Promise<number>((resolve) => {
             const child = spawn("ffprobe", [
               "-v", "error", "-show_entries", "format=duration",
-              "-of", "default=noprint_wrappers=1:nokey=1", tts.files[k],
+              "-of", "default=noprint_wrappers=1:nokey=1", shots[k].narrationAudioPath,
             ]);
             let out = "";
             child.stdout.on("data", (d) => (out += d.toString()));
             child.on("close", () => resolve(parseFloat(out.trim()) || 1));
             child.on("error", () => resolve(1));
           });
-          lineDurations.push(dur);
+          shotDurations.push(dur);
         }
-        const totalNarrSec = lineDurations.reduce((a, b) => a + b, 0);
+        const totalNarrSec = shotDurations.reduce((a, b) => a + b, 0);
+
+        // Map ORIGINAL script-line index → SHOT index. Used by graphics
+        // overlay timing — those are still keyed off script lines.
+        const scriptLineToShotIdx: number[] = [];
+        for (let s = 0; s < shots.length; s++) {
+          if (!shots[s].useSourceAudio) scriptLineToShotIdx.push(s);
+        }
 
         // Pre-build the cut-whoosh SFX track. Cut timestamps are the
-        // running narration durations between shots (skip the very last
-        // boundary — no cut after the final shot).
+        // running shot durations between shots (skip the very last
+        // boundary — no cut after the final shot). Quote shots produce a
+        // cut whoosh on either side which adds to the documentary feel
+        // — same as a real editor highlighting the moment.
         let sfxTrackPath: string | undefined;
         try {
           const cutTs: number[] = [];
           let acc = 0;
-          for (let k = 0; k < scriptLines.length - 1; k++) {
-            acc += lineDurations[k];
+          for (let k = 0; k < shots.length - 1; k++) {
+            acc += shotDurations[k];
             cutTs.push(acc);
           }
           if (cutTs.length > 0 || endCardPngPath) {
@@ -482,29 +568,27 @@ export async function runExplainerPipeline(jobId: string): Promise<void> {
         const CHUNK_WORDS = 3;
         let captionFramesDir: string | undefined;
         let captionFps: number | undefined;
-        // Per-line timestamps in the composed video — needed by the
-        // graphics overlay step (stat callouts + pull quotes time-align
-        // to specific narration lines, not to caption chunks).
-        const lineTimestamps: { start: number; end: number }[] = [];
+        // Per-shot timestamps in the composed video. Captions iterate over
+        // shots so quote shots show the speaker's actual words; graphics
+        // step receives the slice of these that maps back to script lines.
+        const shotTimestamps: { start: number; end: number }[] = [];
         let cursorOuter = 0;
         if (captionsEnabled) {
           let cursor = 0;
           const captionWords: CaptionWord[] = [];
-          for (let k = 0; k < scriptLines.length; k++) {
-            const dur = lineDurations[k];
+          for (let k = 0; k < shots.length; k++) {
+            const dur = shotDurations[k];
 
-            // Split this line's text into CHUNK_WORDS-sized chunks. Each
+            // Split this shot's text into CHUNK_WORDS-sized chunks. Each
             // chunk's duration is proportional to its character count so
             // longer chunks linger longer and short ones flash by — same
             // pacing the human voice naturally takes.
-            const words = scriptLines[k].text.split(/\s+/).filter(Boolean);
+            const words = shots[k].text.split(/\s+/).filter(Boolean);
             const chunks: string[] = [];
             for (let w = 0; w < words.length; w += CHUNK_WORDS) {
               chunks.push(words.slice(w, w + CHUNK_WORDS).join(" "));
             }
-            // Record this line's window in composed-video time (used by
-            // graphics overlays — stat/pullquote PNGs sync to narration).
-            lineTimestamps.push({ start: cursor, end: cursor + dur });
+            shotTimestamps.push({ start: cursor, end: cursor + dur });
             if (chunks.length === 0) {
               cursor += dur;
               continue;
@@ -542,15 +626,18 @@ export async function runExplainerPipeline(jobId: string): Promise<void> {
             }
           }
         } else {
-          // Captions disabled — still need lineTimestamps for graphics.
-          // Use the pre-probed lineDurations (no extra ffprobe calls).
+          // Captions disabled — still need shotTimestamps for graphics.
           let cursor = 0;
-          for (let k = 0; k < scriptLines.length; k++) {
-            lineTimestamps.push({ start: cursor, end: cursor + lineDurations[k] });
-            cursor += lineDurations[k];
+          for (let k = 0; k < shots.length; k++) {
+            shotTimestamps.push({ start: cursor, end: cursor + shotDurations[k] });
+            cursor += shotDurations[k];
           }
           cursorOuter = cursor;
         }
+
+        // Slice shotTimestamps down to ONLY the script-line shots — the
+        // graphics renderer expects one entry per scriptLine, not per shot.
+        const lineTimestamps = scriptLineToShotIdx.map((shotIdx) => shotTimestamps[shotIdx]);
 
         // Render the "real vlogger editing" overlay set: title card +
         // stat callouts + pull quote. Each is a PNG with its own time

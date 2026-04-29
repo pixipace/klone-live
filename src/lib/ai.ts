@@ -1218,3 +1218,141 @@ Write the script. JSON only.`;
     return [];
   }
 }
+
+/** A short quote moment — a 5-12s clip of the speaker actually saying
+ *  the most quotable thing about an insight. Used by the source-first
+ *  composer: we play the speaker's REAL voice + face during these
+ *  windows instead of TTS narration over a stock photo. Documentary
+ *  channels (ColdFusion, Vox, How Money Works) lead with quotes like
+ *  this — narration BRIDGES between them, not the other way around. */
+export type SourceQuote = {
+  /** Source-video timestamp where the quote starts (seconds). */
+  startSec: number;
+  /** Source-video timestamp where the quote ends. End - start should
+   *  fall between 5 and 12 seconds for a watchable Shorts beat. */
+  endSec: number;
+  /** The verbatim transcript text for this segment — used for captions
+   *  during the quote (the speaker's real words, not the narration's). */
+  text: string;
+  /** Why this quote was picked. For debugging / log clarity. */
+  why: string;
+};
+
+/**
+ * Pick 1-2 KEY QUOTE moments from the source transcript that best
+ * demonstrate this insight. The composer plays these with the speaker's
+ * ORIGINAL voice + face — they're the documentary anchor that makes the
+ * explainer feel real, not AI-narrated-over-stock-photos.
+ *
+ * Returns at most 2 quotes (1 for short insights, 2 for richer ones).
+ * Empty array means Gemma couldn't find anything quotable in this
+ * window — pipeline falls back to pure narration mode.
+ */
+export async function pickKeyQuotes(
+  insight: { title: string; takeaway: string; startSec: number; endSec: number },
+  transcriptSegments: { start: number; end: number; text: string }[],
+  speakerHint: string = "",
+): Promise<SourceQuote[]> {
+  if (transcriptSegments.length === 0) return [];
+
+  // Build a numbered list of segments WITH timestamps so Gemma can
+  // reference them by exact start/end. Strict numbering = strict output.
+  const numberedSegments = transcriptSegments
+    .map((s, i) => `[${i}] ${s.start.toFixed(1)}-${s.end.toFixed(1)}: ${s.text.trim()}`)
+    .join("\n");
+
+  const speaker = speakerHint || "the speaker";
+
+  const system = `You're a senior video editor at a documentary explainer channel (think ColdFusion, How Money Works, Vox). You watch a transcript window and pick the 1-2 SHORT MOMENTS where ${speaker} says THE most quotable thing about the insight.
+
+═══════════════════════════════════════════════════
+THE GOAL
+═══════════════════════════════════════════════════
+
+These quotes are the DOCUMENTARY ANCHORS. The composer plays them with the speaker's REAL voice + face. Narration BRIDGES into and out of them ("Here's how Naval framed it..." → quote plays → "And that's why..."). This is what makes a Vox-style explainer feel real.
+
+Pick the moments where:
+  ✅ The speaker says the thing IN THEIR OWN VOICE that the insight is built around
+  ✅ The line is concrete, quotable, has a punchy ending
+  ✅ It runs 5-12 seconds (long enough to land, short enough to keep momentum)
+
+DO NOT pick:
+  ❌ Filler / banter / "you know" / sponsor reads
+  ❌ Anything where the speaker is meandering or trailing off
+  ❌ Long-winded explanations — those are what NARRATION is for
+  ❌ Moments where the speaker sounds like they're reading
+
+If the transcript window has NO quotable moments (mostly host setup, banter, or vague gestures), return an EMPTY array. We'd rather have zero quotes than a weak one.
+
+═══════════════════════════════════════════════════
+LENGTH RULES
+═══════════════════════════════════════════════════
+
+Each quote: 5-12 seconds. Sub-5s feels clipped; over-12s viewers tune out.
+Total quotes: 0-2 per insight. Most explainers benefit from exactly 1.
+Pick 2 ONLY when the insight has two distinct quotable moments AND they're
+on different aspects of the insight (not the same point twice).
+
+═══════════════════════════════════════════════════
+OUTPUT
+═══════════════════════════════════════════════════
+
+STRICT JSON only:
+{"quotes": [{"startSec": <number>, "endSec": <number>, "text": "<verbatim>", "why": "<one-line reason>"}]}
+
+  - startSec/endSec: must come from the segment timestamps shown.
+    You can SPAN multiple segments if they form one continuous quote
+    (use the FIRST segment's start and the LAST segment's end).
+  - text: the verbatim transcript for that span (concatenate the
+    segment texts you span over).
+  - why: one short sentence explaining why this is the best quote
+    for this insight.
+  - Empty array {"quotes": []} is a perfectly valid answer.
+
+No preamble, no markdown.`;
+
+  const prompt = `Insight: ${insight.title}
+Takeaway: ${insight.takeaway}
+Insight time window in source: ${insight.startSec.toFixed(1)}s — ${insight.endSec.toFixed(1)}s
+
+Transcript segments around this insight (with [index] start-end: text):
+${numberedSegments}
+
+Pick 0-2 quote moments. JSON only.`;
+
+  try {
+    const raw = await generate(prompt, system, {
+      temperature: 0.4,
+      maxTokens: 800,
+      format: "json",
+    });
+    const parsed = JSON.parse(raw) as { quotes?: unknown };
+    if (!Array.isArray(parsed.quotes)) return [];
+
+    const out: SourceQuote[] = [];
+    for (const q of parsed.quotes) {
+      if (
+        typeof q !== "object" || q === null ||
+        typeof (q as { startSec?: unknown }).startSec !== "number" ||
+        typeof (q as { endSec?: unknown }).endSec !== "number" ||
+        typeof (q as { text?: unknown }).text !== "string"
+      ) {
+        continue;
+      }
+      const sq = q as SourceQuote;
+      const dur = sq.endSec - sq.startSec;
+      if (dur < 4 || dur > 14) continue; // duration sanity gate
+      if (sq.text.trim().length < 10) continue;
+      out.push({
+        startSec: sq.startSec,
+        endSec: sq.endSec,
+        text: sq.text.trim().slice(0, 500),
+        why: typeof sq.why === "string" ? sq.why.trim().slice(0, 200) : "",
+      });
+    }
+    return out.slice(0, 2);
+  } catch (err) {
+    console.warn("[pickKeyQuotes] failed:", err);
+    return [];
+  }
+}
