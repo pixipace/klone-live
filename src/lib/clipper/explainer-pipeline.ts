@@ -213,7 +213,10 @@ export async function runExplainerPipeline(jobId: string): Promise<void> {
         progress: 30,
       },
     });
-    const insights = await extractInsights(fullTranscript, dl.title, 5);
+    // Cap at 4. Most podcast hours have 1-3 truly viral conclusions —
+    // five is a pad. Gemma is told to return FEWER better ones, not pad
+    // to the cap. Quality over quantity.
+    const insights = await extractInsights(fullTranscript, dl.title, 4);
     if (insights.length === 0) {
       throw new Error("No insights extracted — source may be too short or not substantive enough");
     }

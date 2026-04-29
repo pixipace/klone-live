@@ -781,6 +781,30 @@ Keep search queries 2-4 WORDS. Searchable on Wikipedia.
 If a noun in the line has a Wikipedia article, that's the query.
 
 ═══════════════════════════════════════════════════
+BRANDS / PRODUCTS / PLATFORMS — USE THE LOGO
+═══════════════════════════════════════════════════
+
+When the line mentions a real software product, AI tool, company, or
+platform (Claude, ChatGPT, OpenAI, Anthropic, ElevenLabs, Adobe, Google,
+Microsoft, Apple, Meta, Premiere Pro, Final Cut, DaVinci Resolve,
+Midjourney, Stable Diffusion, Runway, fal.ai, Notion, Figma, GitHub,
+YouTube, TikTok, Instagram, etc.), the query MUST be:
+
+  "{Brand name} logo"
+
+  ✅ "Claude logo", "ElevenLabs logo", "Premiere Pro logo", "OpenAI logo"
+  ❌ "AI assistant talking" (when line mentions Claude — viewer expects the LOGO)
+  ❌ "video editor screen" (when line mentions Premiere Pro — use the actual logo)
+
+This makes the explainer feel REAL. Random stock photos for brand
+mentions break trust. The viewer sees "Claude" in the captions and
+expects to see Claude's logo, not a generic chatbot stock photo.
+
+If the line shows the brand DOING something specific (e.g., "Claude
+generating code"), pick a screenshot-style query: "Claude interface" or
+"ChatGPT screenshot". Otherwise default to "{Brand} logo".
+
+═══════════════════════════════════════════════════
 TYPE FIELD
 ═══════════════════════════════════════════════════
 
@@ -960,10 +984,13 @@ SCORING (BE STRICT — fewer great picks > more weak ones)
 
   10 = blow-your-mind contrarian, you'd repost it yourself
   8-9 = strong claim with proof — solid viral candidate
-  7 = decent insight but not surprising — borderline
-  ≤6 = topic-level, vague, or "interesting thought" with no edge — REJECT
+  ≤7 = topic-level, vague, "decent" but not viral — REJECT
 
-If the source ONLY has 2 great insights, return 2. NEVER pad to hit ${maxInsights}. A polarizing 9 beats three forgettable 7s.
+DEFAULT TO FEWER. A 60-minute podcast typically has 1-3 truly viral
+conclusions. Returning 4 is the EXCEPTION, not the rule. Returning 1 is
+a perfectly valid answer if the source only has one genuinely contrarian
+take. NEVER pad to hit ${maxInsights}. One 9/10 explainer with COMPLETE
+detail beats four 7/10 explainers viewers skip past.
 
 ═══════════════════════════════════════════════════
 SKIP THESE OUTRIGHT
@@ -1013,9 +1040,10 @@ Return up to ${maxInsights} insights as JSON.`;
         continue;
       }
       const i = ins as Insight;
-      // Floor at 7 to match the prompt — Gemma sometimes ignores its own
-      // scoring rules and emits 5/6 anyway. Hard JS gate kills the slop.
-      if (i.punchScore < 7) continue;
+      // Floor at 8 — Gemma over-pads when the floor sits at 7. We only
+      // want VIRAL takes (8/10+), not "decent" content. Better to return
+      // 1 great explainer than 4 mediocre ones the user has to skip.
+      if (i.punchScore < 8) continue;
       if (i.endSec <= i.startSec) continue;
       out.push({
         title: i.title.trim().slice(0, 100),
@@ -1044,7 +1072,7 @@ export type ScriptLine = {
 
 /**
  * Given a single Insight + the surrounding transcript context, write a
- * 30-60s narration script as a list of short lines. Each line is a TTS
+ * 60-75s narration script as a list of short lines. Each line is a TTS
  * unit (~one sentence) with an optional visual hint that tells the
  * source-segment picker what would be the ideal cutaway visual.
  *
@@ -1065,7 +1093,7 @@ export async function writeExplainerScript(
       "Write like a story — set up tension, reveal, payoff. Conversational. 'So picture this…' 'And then…'.",
   }[channelStyle];
 
-  const system = `You write 30-60 second narration scripts for AI-narrated explainer Shorts. Output is read aloud by a TTS engine, so write the way it SOUNDS, not the way it would read on a page.
+  const system = `You write 60-75 second narration scripts for AI-narrated explainer Shorts. Output is read aloud by a TTS engine, so write the way it SOUNDS, not the way it would read on a page.
 
 ${styleGuide}
 
@@ -1073,7 +1101,7 @@ ${styleGuide}
 STRUCTURE — every script must follow this 4-beat arc
 ═══════════════════════════════════════════════════
 
-  BEAT 1 — HOOK (lines 1-2, ~3-5 seconds)
+  BEAT 1 — HOOK (lines 1-2, ~5-7 seconds)
     Open with the contrarian claim or hidden mechanism. NEVER:
       ❌ "Today we're going to talk about…"
       ❌ "In this video I'll explain…"
@@ -1083,16 +1111,21 @@ STRUCTURE — every script must follow this 4-beat arc
       ✅ "There's a hidden tax that kills 90% of restaurants. Almost nobody talks about it."
       ✅ "Elon just admitted the one thing every Mars believer has been ignoring."
 
-  BEAT 2 — TENSION (lines 3-6, ~10-15 sec)
+  BEAT 2 — TENSION (lines 3-7, ~15-20 sec)
     Build the case. Specific details, names, numbers, the "what makes this real."
     Use 1-2 word punch sentences for emphasis: "Massive." "And it gets worse."
+    DO NOT skim — give the full context. Specifics make it stick.
 
-  BEAT 3 — REVEAL (lines 7-10, ~10-15 sec)
+  BEAT 3 — REVEAL (lines 8-13, ~20-25 sec)
     Drop the actual insight + the proof. The "here's why" moment.
+    Walk through the mechanism step by step. Don't summarize — explain.
+    A viewer who finishes this beat should feel they UNDERSTAND now,
+    not just that they heard a hot take.
 
-  BEAT 4 — PAYOFF (lines 11-13, ~5 sec)
+  BEAT 4 — PAYOFF (lines 14-17, ~10 sec)
     A punchline OR a "here's why this matters" landing. Memorable.
-    NEVER end on "subscribe for more." End on the IDEA.
+    Tie it back to the hook so the loop closes. Maybe a "what now"
+    implication. NEVER end on "subscribe for more." End on the IDEA.
 
 ═══════════════════════════════════════════════════
 LANGUAGE RULES — what makes it NOT sound AI-generated
@@ -1107,7 +1140,7 @@ LANGUAGE RULES — what makes it NOT sound AI-generated
 - DO NOT quote them word-for-word — paraphrase. We're commentary.
 - Skip "um", "you know". Every word earns its place.
 - No emojis (spoken aloud, remember).
-- Aim for 8-13 lines total — that's 30-50 seconds of audio at natural narration speed.
+- Aim for 14-18 lines total — that's 60-75 seconds of audio at natural narration speed. DO NOT undershoot — viewers came for an explanation, give them the whole thing.
 
 ═══════════════════════════════════════════════════
 EVERY LINE GETS A VISUAL HINT
@@ -1165,7 +1198,7 @@ Write the script. JSON only.`;
         visualHint: typeof l.visualHint === "string" ? l.visualHint.trim().slice(0, 80) : "",
       });
     }
-    return out.slice(0, 18);
+    return out.slice(0, 22);
   } catch (err) {
     console.warn("[writeExplainerScript] failed:", err);
     return [];

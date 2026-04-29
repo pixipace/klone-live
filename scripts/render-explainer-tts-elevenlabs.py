@@ -35,9 +35,13 @@ def main() -> int:
     out_dir = cfg["outDir"]
     voice_id = cfg.get("voiceId") or os.environ.get("ELEVENLABS_VOICE_ID")
     model_id = cfg.get("modelId") or "eleven_multilingual_v2"
-    stability = float(cfg.get("stability", 0.40))
-    similarity = float(cfg.get("similarity", 0.75))
-    style = float(cfg.get("style", 0.60))
+    # Documentary narration defaults — calmer + more consistent than the
+    # default EL "expressive" preset. Long monologues with high style/low
+    # stability sound artificially performed; these settings deliver a
+    # measured, broadcast-news cadence that wears better over 60+ seconds.
+    stability = float(cfg.get("stability", 0.65))
+    similarity = float(cfg.get("similarity", 0.85))
+    style = float(cfg.get("style", 0.25))
     use_speaker_boost = True
 
     api_key = os.environ.get("ELEVENLABS_API_KEY")

@@ -42,6 +42,42 @@ export type ResolvedVisual =
 
 const MIN_VISION_SCORE = 6; // 0-10, drop below this
 
+// Safety net for the visual planner — if Gemma forgot to add "logo" to a
+// known-brand query, we rewrite it here. Wikipedia's article infobox
+// almost always has the company logo as the lead image, so "{Brand} logo"
+// reliably returns the actual logo. Lowercase keys; matched as substring
+// against Gemma's query.
+const KNOWN_BRANDS = [
+  "claude", "anthropic", "chatgpt", "openai", "gpt-4", "gpt-5", "gpt 4", "gpt 5",
+  "elevenlabs", "eleven labs", "fal.ai", "fal ai",
+  "midjourney", "stable diffusion", "runway", "pika", "sora",
+  "google", "gemini", "deepmind", "youtube",
+  "microsoft", "copilot", "azure", "bing",
+  "apple", "siri", "vision pro",
+  "meta", "facebook", "instagram", "whatsapp",
+  "tiktok", "twitter", "x.com",
+  "adobe", "premiere pro", "premiere", "after effects", "photoshop", "illustrator",
+  "final cut", "davinci resolve", "capcut", "descript",
+  "notion", "figma", "github", "vercel", "next.js", "nextjs",
+  "linkedin", "spotify", "amazon", "aws", "tesla", "spacex",
+];
+
+function brandifyQuery(query: string): string {
+  const q = query.toLowerCase();
+  if (q.includes("logo") || q.includes("screenshot") || q.includes("interface")) {
+    return query; // Already brand-aware
+  }
+  for (const brand of KNOWN_BRANDS) {
+    if (q.includes(brand)) {
+      // Use the brand from the original query (preserves casing) +
+      // " logo" suffix. Wikipedia search is case-insensitive but the
+      // attribution string looks better with proper capitalization.
+      return `${query} logo`;
+    }
+  }
+  return query;
+}
+
 /**
  * Resolve a planned visual to a concrete file path. Returns null if
  * everything fails (caller falls back to source).
@@ -51,7 +87,14 @@ async function resolveImage(query: string, type: LineVisual["type"]): Promise<{ 
   // function signature only knows person/place/thing/event).
   const broker: "person" | "place" | "thing" | "event" =
     type === "concept" ? "thing" : type;
-  const candidates = await searchBroll(query, broker);
+  // Brand-aware query rewrite — turns "Claude" into "Claude logo" so we
+  // get the actual logo from Wikipedia's article instead of a random
+  // chatbot stock photo.
+  const finalQuery = brandifyQuery(query);
+  if (finalQuery !== query) {
+    console.log(`[explainer-visuals] brand detected, rewrote query: "${query}" → "${finalQuery}"`);
+  }
+  const candidates = await searchBroll(finalQuery, broker);
   if (candidates.length === 0) return null;
 
   // Try candidates in order — Gemma vision scoring on each downloaded
@@ -66,7 +109,7 @@ async function resolveImage(query: string, type: LineVisual["type"]): Promise<{ 
       const { readFile } = await import("fs/promises");
       const buf = await readFile(filePath);
       const b64 = buf.toString("base64");
-      score = await scoreBrollImageMatch(b64, query);
+      score = await scoreBrollImageMatch(b64, finalQuery);
     } catch {
       // If scoring fails, default to medium and proceed
     }
