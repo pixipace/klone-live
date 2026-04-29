@@ -82,8 +82,14 @@ export type ExplainerShot = {
   narrationAudioPath: string;
   /** Spoken text — used to render burn-in captions over the narration. */
   text: string;
-  /** Source video segment to show during this narration line (muted). */
-  source: SourceSegment;
+  /** Visual to play during this narration line. Either a SOURCE segment
+   *  (silent video clip from the source — used for opening/middle/close
+   *  anchors so viewers know it's a real interview), or an IMAGE (a
+   *  topic-relevant photo from Wikipedia/Pexels/Pixabay/AI — illustrates
+   *  the FACT being discussed instead of showing the host on repeat). */
+  visual:
+    | { kind: "source"; segment: SourceSegment }
+    | { kind: "image"; filePath: string; attribution?: string | null };
   /** When true, this shot gets a rapid PUNCH-IN zoom (1.0→1.15→1.0)
    *  instead of the standard variable Ken Burns rotation. Mark the
    *  punchiest line per insight to give the eye a beat to land on. */
@@ -156,18 +162,30 @@ export async function composeExplainer(
   const totalDur = narrationDurations.reduce((a, b) => a + b, 0);
 
   // Build the FFmpeg command. Inputs (in order):
-  //   0       — source video (cut into N segments, audio dropped)
-  //   1..N    — per-line narration audio
-  //   N+1     — (optional) caption frame sequence
-  //   N+2     — (optional) attribution PNG (single image, looped)
+  //   0          — source video (cut into N segments for "source" shots)
+  //   1..N       — per-line narration audio
+  //   N+1..N+M   — image inputs (one per "image" shot — Wikipedia/Pexels/AI)
+  //   then       — caption frames, attribution PNG, end card, custom overlays,
+  //                music, sfx (all optional)
   const args: string[] = ["-y", "-i", sourceVideoPath];
   for (const s of shots) {
     args.push("-i", s.narrationAudioPath);
   }
+  // Image inputs — one per "image" shot. Build a parallel array mapping
+  // shotIdx → ffmpeg input index for the per-shot filter chain below.
+  const shotImageInputIdx: (number | null)[] = new Array(shots.length).fill(null);
+  let imgIdxCursor = 1 + shots.length;
+  for (let i = 0; i < shots.length; i++) {
+    const s = shots[i];
+    if (s.visual.kind === "image") {
+      args.push("-loop", "1", "-i", s.visual.filePath);
+      shotImageInputIdx[i] = imgIdxCursor++;
+    }
+  }
   let captionsInputIdx: number | null = null;
   let attributionInputIdx: number | null = null;
   let endCardInputIdx: number | null = null;
-  let nextInputIdx = 1 + shots.length;
+  let nextInputIdx = imgIdxCursor;
   if (overlays.captionsFramePattern && overlays.captionsFps) {
     args.push(
       "-framerate", String(overlays.captionsFps),
@@ -226,21 +244,24 @@ export async function composeExplainer(
 
   for (let i = 0; i < shots.length; i++) {
     const s = shots[i];
-    const sourceSegDur = s.source.endSec - s.source.startSec;
     const narrDur = narrationDurations[i];
+    const isImage = s.visual.kind === "image";
 
     // Real-editor playback: source plays at NORMAL speed (no setpts
     // stretch — that visibly slow-mos people and looks AI-cheap).
-    //   - If source is LONGER than narration → trim early via -t
-    //   - If source is SHORTER than narration → freeze last frame to
-    //     pad with `tpad=stop_mode=clone:stop_duration=DIFF`. Better
-    //     than slowing down or repeating the cut.
-    //
-    // Variable Ken Burns: alternate zoom-in / zoom-out / hold per shot
-    // by index. Mixing motion direction across shots is what real editors
-    // do; uniform zoom-in on every shot is the giveaway "AI editor" tell.
-    const playDur = Math.min(sourceSegDur, narrDur);
-    const padDur = Math.max(0, narrDur - playDur);
+    // For IMAGE shots: the input is a still PNG/JPG that we loop, so
+    // playDur = narrDur exactly (no source-segment math needed).
+    let playDur: number;
+    let padDur: number;
+    if (isImage) {
+      playDur = narrDur;
+      padDur = 0;
+    } else {
+      const seg = (s.visual as { kind: "source"; segment: SourceSegment }).segment;
+      const sourceSegDur = seg.endSec - seg.startSec;
+      playDur = Math.min(sourceSegDur, narrDur);
+      padDur = Math.max(0, narrDur - playDur);
+    }
 
     const fps = 30;
     const totalFrames = Math.max(1, Math.round(narrDur * fps));
@@ -285,34 +306,48 @@ export async function composeExplainer(
       ? `,fade=in:st=0:d=0.07:color=white`
       : "";
 
-    // Speaker-tracking crop: when faceCrop is provided we first crop a
-    // 9:16 vertical strip in source-pixel space CENTERED ON THE SPEAKER,
-    // then scale to TARGET. Without faceCrop we do the standard scale-
-    // up + center-crop. Speaker tracking is critical for talk-show /
-    // interview sources where the speaker is on the side of the 16:9
-    // frame — center-crop pushes them off the edge.
-    let cropChain: string;
-    if (faceCrop) {
-      const stripW = Math.round((faceCrop.imgH * 9) / 16);
-      const cx = Math.max(0, Math.min(faceCrop.imgW - stripW, faceCrop.cropX));
-      cropChain =
-        `crop=${stripW}:${faceCrop.imgH}:${cx}:0,` +
-        `scale=${TARGET_W}:${TARGET_H}`;
-    } else {
-      cropChain =
+    let vIn: string;
+    if (isImage) {
+      // IMAGE shot — load the looped image, scale-pad to 9:16, trim to
+      // narration duration, apply Ken Burns + grade + vignette + flash.
+      // No face-crop (image is already a curated photo, not a wide source).
+      const imgIdx = shotImageInputIdx[i]!;
+      vIn =
+        `[${imgIdx}:v]loop=loop=-1:size=1:start=0,trim=duration=${playDur.toFixed(3)},setpts=PTS-STARTPTS,fps=${fps},` +
         `scale=${TARGET_W}:${TARGET_H}:force_original_aspect_ratio=increase,` +
-        `crop=${TARGET_W}:${TARGET_H}`;
+        `crop=${TARGET_W}:${TARGET_H},` +
+        `${zoompanExpr},` +
+        `eq=contrast=1.08:saturation=1.10:gamma_r=1.02:gamma_b=0.98,` +
+        `vignette=PI/4.5` +
+        flashFilter +
+        `[v${i}]`;
+    } else {
+      // SOURCE shot — speaker-tracking crop when faceCrop provided so
+      // the speaker stays in frame on 16:9 → 9:16 conversion. Falls back
+      // to scale+center-crop without faceCrop.
+      const seg = (s.visual as { kind: "source"; segment: SourceSegment }).segment;
+      let cropChain: string;
+      if (faceCrop) {
+        const stripW = Math.round((faceCrop.imgH * 9) / 16);
+        const cx = Math.max(0, Math.min(faceCrop.imgW - stripW, faceCrop.cropX));
+        cropChain =
+          `crop=${stripW}:${faceCrop.imgH}:${cx}:0,` +
+          `scale=${TARGET_W}:${TARGET_H}`;
+      } else {
+        cropChain =
+          `scale=${TARGET_W}:${TARGET_H}:force_original_aspect_ratio=increase,` +
+          `crop=${TARGET_W}:${TARGET_H}`;
+      }
+      vIn =
+        `[0:v]trim=start=${seg.startSec.toFixed(3)}:duration=${playDur.toFixed(3)},setpts=PTS-STARTPTS,` +
+        cropChain +
+        padFilter +
+        `,${zoompanExpr},` +
+        `eq=contrast=1.08:saturation=1.10:gamma_r=1.02:gamma_b=0.98,` +
+        `vignette=PI/4.5` +
+        flashFilter +
+        `[v${i}]`;
     }
-
-    const vIn =
-      `[0:v]trim=start=${s.source.startSec.toFixed(3)}:duration=${playDur.toFixed(3)},setpts=PTS-STARTPTS,` +
-      cropChain +
-      padFilter +
-      `,${zoompanExpr},` +
-      `eq=contrast=1.08:saturation=1.10:gamma_r=1.02:gamma_b=0.98,` +
-      `vignette=PI/4.5` +
-      flashFilter +
-      `[v${i}]`;
     vfParts.push(vIn);
     vLabels.push(`[v${i}]`);
 

@@ -695,6 +695,197 @@ export async function isOllamaUp(): Promise<boolean> {
 // videos with our voice + silent source cutaways. See lib/clipper/explainer.ts.
 // ============================================================================
 
+/** What to show on screen for one narration line. The pipeline allocator
+ *  uses this to choose between a topic-relevant image (Wikipedia / Pexels
+ *  / Pixabay), an AI-generated image (fal.ai for abstract concepts), or
+ *  fall back to a source-video segment. Driven by Gemma per-line because
+ *  ONLY Gemma knows what the line is "about". */
+export type LineVisual = {
+  /** "image" = search a real photo via the broll system. "ai" = generate
+   *  via fal.ai (used sparingly — capped at 2 per explainer for cost +
+   *  quality). "source" = use a source-video segment (anchor moments). */
+  kind: "image" | "ai" | "source";
+  /** Search query for "image" (e.g., "Tesla factory", "Elon Musk").
+   *  Or AI prompt for "ai" (e.g., "abstract automation concept,
+   *  futuristic, cinematic"). Empty for "source". */
+  query: string;
+  /** Visual entity type for ranking image-source preference (Wikipedia
+   *  for proper nouns, Pexels/Pixabay for generic things). */
+  type: "person" | "place" | "thing" | "event" | "concept";
+};
+
+/**
+ * Per-line visual planner. Reads each narration line + the broader
+ * insight, decides what would be the BEST visual for that line.
+ *
+ * Bias: prefer real images of named subjects (illustrates the FACT).
+ * Use AI generation only for abstract concepts no photo exists for.
+ * Mark a few lines as "source" so we anchor with brief speaker shots
+ * for authenticity (the pipeline enforces opening/middle/closing
+ * source anchors as a hard rule on top of this).
+ */
+export async function planLineVisuals(
+  insight: { title: string; takeaway: string },
+  scriptLines: { text: string }[],
+): Promise<LineVisual[]> {
+  if (scriptLines.length === 0) return [];
+
+  const numbered = scriptLines
+    .map((l, i) => `${i + 1}. ${l.text}`)
+    .join("\n");
+
+  const system = `You are the visual director for a documentary-style explainer Short. For each narration line, you decide WHAT THE VIEWER SHOULD SEE — almost never the host's face.
+
+═══════════════════════════════════════════════════
+THE GOAL
+═══════════════════════════════════════════════════
+
+Viewers tune out fast when they see the same person talking. We are NOT making a clip channel — we are making a documentary. Each narration line should be illustrated with what's BEING DISCUSSED:
+  - "Elon talks about Mars" → photo of Mars, NOT Elon's face
+  - "Tesla's factory" → photo of a Tesla factory
+  - "the auction floor" → photo of a cricket auction or similar
+  - "complexity kills companies" → abstract image (tangled wires, broken machinery)
+
+═══════════════════════════════════════════════════
+THE THREE VISUAL KINDS
+═══════════════════════════════════════════════════
+
+  "image" — A REAL photo searchable on Wikipedia / Pexels / Pixabay.
+    Use when narration mentions a NAMED person, place, thing, or event
+    that has a known visual.
+    Examples: "Elon Musk" → image. "Tokyo" → image. "Tesla Cybertruck"
+    → image. "the IPL trophy" → image.
+
+  "ai" — AI-generated image for ABSTRACT concepts no photo exists for.
+    Use SPARINGLY (cap is 2 per explainer). Examples: "complexity",
+    "the new economy", "uncertainty", "automation in 5 years".
+    The "query" should be a vivid AI image prompt (e.g., "tangled
+    wires growing into a forest, dark cinematic, 9:16").
+
+  "source" — A short clip from the source video (the host on screen).
+    Use ONLY when the line is META about the speaker (e.g., "what
+    Elon is REALLY saying here is...") or for a single mid-script
+    "they actually said this" anchor moment. PICK AT MOST 2 lines
+    as "source" — the pipeline adds opener + closer source anchors
+    automatically on top of these.
+
+═══════════════════════════════════════════════════
+QUERY FORMATTING (image type)
+═══════════════════════════════════════════════════
+
+Keep search queries 2-4 WORDS. Searchable on Wikipedia.
+  ✅ "Elon Musk", "Tesla Gigafactory", "cricket auction", "stock market crash"
+  ❌ "Elon Musk talking about Mars during interview"
+  ❌ "stuff related to AI agents"
+
+If a noun in the line has a Wikipedia article, that's the query.
+
+═══════════════════════════════════════════════════
+TYPE FIELD
+═══════════════════════════════════════════════════
+
+  "person" — named human ("Elon Musk", "Naval Ravikant")
+  "place" — geographic location ("Mars", "Tokyo", "the SpaceX HQ")
+  "thing" — object / brand / generic noun ("Cybertruck", "softbox", "AI agent")
+  "event" — historical or news event ("2008 crash", "IPL 2025 final")
+  "concept" — abstract idea ("automation", "freedom", "complexity") → ALWAYS pair with kind="ai"
+
+═══════════════════════════════════════════════════
+OUTPUT
+═══════════════════════════════════════════════════
+
+STRICT JSON only. One entry per script line, IN ORDER:
+{"visuals": [{"kind": "image"|"ai"|"source", "query": "...", "type": "person"|"place"|"thing"|"event"|"concept"}]}
+
+  - Length MUST equal the number of script lines (${scriptLines.length}).
+  - "ai" entries: max 2 per explainer.
+  - "source" entries: max 2 per explainer (you can pick 0 if no line
+    is meta — pipeline adds anchors anyway).
+  - Default to "image" — if you're unsure, find a noun in the line and
+    use that as the query.
+
+No preamble, no markdown.`;
+
+  const prompt = `Insight: ${insight.title}
+Takeaway: ${insight.takeaway}
+
+Narration script (${scriptLines.length} lines):
+${numbered}
+
+Return ${scriptLines.length} visuals as JSON, one per line, in order.`;
+
+  try {
+    const raw = await generate(prompt, system, {
+      temperature: 0.35,
+      maxTokens: 1500,
+      format: "json",
+    });
+    const parsed = JSON.parse(raw) as { visuals?: unknown };
+    if (!Array.isArray(parsed.visuals)) return scriptLines.map(fallbackVisual);
+
+    const out: LineVisual[] = [];
+    for (let i = 0; i < scriptLines.length; i++) {
+      const v = (parsed.visuals as unknown[])[i];
+      if (
+        typeof v !== "object" || v === null ||
+        typeof (v as { kind?: unknown }).kind !== "string" ||
+        typeof (v as { query?: unknown }).query !== "string" ||
+        typeof (v as { type?: unknown }).type !== "string"
+      ) {
+        out.push(fallbackVisual(scriptLines[i]));
+        continue;
+      }
+      const lv = v as LineVisual;
+      const kind: LineVisual["kind"] =
+        lv.kind === "image" || lv.kind === "ai" || lv.kind === "source"
+          ? lv.kind
+          : "image";
+      const type: LineVisual["type"] =
+        lv.type === "person" || lv.type === "place" || lv.type === "thing" ||
+        lv.type === "event" || lv.type === "concept"
+          ? lv.type
+          : "thing";
+      out.push({
+        kind,
+        query: lv.query.trim().slice(0, 120),
+        type,
+      });
+    }
+
+    // Enforce hard caps in JS in case Gemma over-budgeted
+    let aiCount = 0;
+    let sourceCount = 0;
+    for (const v of out) {
+      if (v.kind === "ai") {
+        aiCount++;
+        if (aiCount > 2) v.kind = "image";
+      } else if (v.kind === "source") {
+        sourceCount++;
+        if (sourceCount > 2) v.kind = "image";
+      }
+    }
+
+    return out;
+  } catch (err) {
+    console.warn("[planLineVisuals] failed:", err);
+    return scriptLines.map(fallbackVisual);
+  }
+}
+
+/** Fallback when Gemma fails — derive a naive search query from the line. */
+function fallbackVisual(line: { text: string }): LineVisual {
+  const words = line.text
+    .replace(/[^a-zA-Z0-9 ]+/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 5)
+    .slice(0, 2);
+  return {
+    kind: "image",
+    query: words.join(" ") || "documentary",
+    type: "thing",
+  };
+}
+
 export type Insight = {
   /** Short, punchy title for the explainer video (max ~70 chars). Will
    *  also be used as the YouTube title with #Shorts appended. */

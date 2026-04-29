@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { CLIPPER_DIRS } from "./types";
 import { downloadYouTube } from "./youtube";
 import { transcribe } from "./whisper";
-import { extractInsights, writeExplainerScript } from "@/lib/ai";
+import { extractInsights, writeExplainerScript, planLineVisuals } from "@/lib/ai";
 import { renderNarration } from "./explainer-tts";
 import { pickSourceSegments, detectSceneChanges } from "./explainer-segments";
 import { composeExplainer, type ExplainerShot } from "./explainer-compose";
@@ -14,6 +14,7 @@ import { renderInsightOverlays, pickPunchiestLine } from "./explainer-graphics";
 import { pickMusicTrack } from "./music";
 import { buildCutWhooshTrack } from "./explainer-sfx";
 import { detectFaceForClip, cropXForFace } from "./face";
+import { resolveVisuals } from "./explainer-visuals";
 
 /**
  * Render the small "VIA <source>" PNG used as an always-on attribution
@@ -365,11 +366,23 @@ export async function runExplainerPipeline(jobId: string): Promise<void> {
           );
         }
 
-        // Pick source video cutaways aligned to each script line.
-        // Pass FULL source duration so the picker can pull filler from
-        // anywhere (not just the insight's window), avoiding "same clip
-        // shown 8 times in a row" when narration has more lines than the
-        // window has distinct visual moments.
+        // SURVIVAL-MODE VISUAL LAYER:
+        //   - Gemma plans per-line visuals (image / ai / source) — bias
+        //     toward illustrating the FACT (subject mentioned), not the
+        //     host's face. Showing the same talking head 8 times kills
+        //     retention faster than anything else on Shorts.
+        //   - resolveVisuals fetches actual file paths (Wikipedia/
+        //     Pexels/Pixabay images, fal.ai for abstract concepts) AND
+        //     enforces the anchor rule: shots[0], shots[mid], shots[N-1]
+        //     are always source-video for authenticity.
+        //   - Lines that fail resolution fall back to source segments.
+        const visualPlans = await planLineVisuals(insight, scriptLines);
+        const resolved = await resolveVisuals(visualPlans);
+
+        // Pick source segments for any "source" slot in the resolved
+        // plan. Pass FULL source duration so the picker can pull filler
+        // from anywhere, avoiding "same clip shown 8 times" when narration
+        // has more source lines than the window has distinct moments.
         const segments = pickSourceSegments(
           scriptLines,
           transcript.segments,
@@ -383,13 +396,32 @@ export async function runExplainerPipeline(jobId: string): Promise<void> {
         const punchPick = pickPunchiestLine(scriptLines);
         const punchIdx = punchPick?.lineIdx ?? -1;
 
-        // Compose
-        const shots: ExplainerShot[] = scriptLines.map((line, idx) => ({
-          narrationAudioPath: tts.files[idx],
-          text: line.text,
-          source: segments[idx],
-          punch: idx === punchIdx,
-        }));
+        // Build shot list — image shots use resolved.filePath, source
+        // shots use the picked segment.
+        const shots: ExplainerShot[] = scriptLines.map((line, idx) => {
+          const r = resolved[idx];
+          const punch = idx === punchIdx;
+          if (r.kind === "image" || r.kind === "ai") {
+            return {
+              narrationAudioPath: tts.files[idx],
+              text: line.text,
+              visual: { kind: "image", filePath: r.filePath, attribution: r.attribution },
+              punch,
+            };
+          }
+          return {
+            narrationAudioPath: tts.files[idx],
+            text: line.text,
+            visual: { kind: "source", segment: segments[idx] },
+            punch,
+          };
+        });
+
+        const imgCount = shots.filter((s) => s.visual.kind === "image").length;
+        const srcCount = shots.length - imgCount;
+        console.log(
+          `[explainer] insight ${i} visuals: ${imgCount} image / ${srcCount} source`,
+        );
 
         // Probe all per-line narration durations ONCE — used by SFX,
         // captions, and graphics overlays. Avoids re-probing N times.
