@@ -33,7 +33,6 @@ export type PlatformSuccess = {
 
 export type PlatformError = {
   error: string;
-  pendingApproval?: boolean;
 };
 
 export type PlatformResult = PlatformSuccess | PlatformError;

@@ -64,14 +64,16 @@ export async function postToFacebook({
     const data = await res.json();
     if (data.error) {
       const msg: string = data.error.message;
+      // publish_video approved 2026-04-29 — code 200 / "permission" errors
+      // post-approval mean the USER's specific page lacks Pages Manage Posts,
+      // not the App lacking the scope. Surface as a connection issue.
       if (
         msg.toLowerCase().includes("permission") ||
         data.error.code === 200
       ) {
         return {
           error:
-            "Facebook video publishing permission is pending review. Photo and text posts work; please re-request publish_video.",
-          pendingApproval: true,
+            "Facebook denied this video — your Page may have revoked posting permissions. Reconnect the account in /dashboard/accounts to re-grant.",
         };
       }
       return { error: msg };

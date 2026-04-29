@@ -97,6 +97,10 @@ export async function postToInstagram({
     };
   } catch (err) {
     const errMsg = String(err);
+    // instagram_content_publish approved 2026-04-29 — permission errors
+    // post-approval mean the user's IG account is missing a Business
+    // profile link or the Page<->IG connection lapsed. Tell them to
+    // reconnect rather than wait for approval.
     if (
       errMsg.includes("permission") ||
       errMsg.includes("does not have") ||
@@ -106,8 +110,7 @@ export async function postToInstagram({
     ) {
       return {
         error:
-          "Instagram content publishing permission is pending platform review. Post will be published once approved.",
-        pendingApproval: true,
+          "Instagram denied this post — your account must be a Business or Creator profile linked to a Facebook Page. Reconnect at /dashboard/accounts.",
       };
     }
     return { error: errMsg };
