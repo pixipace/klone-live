@@ -379,7 +379,12 @@ export async function runExplainerPipeline(jobId: string): Promise<void> {
         //     enforces the anchor rule: shots[0], shots[mid], shots[N-1]
         //     are always source-video for authenticity.
         //   - Lines that fail resolution fall back to source segments.
-        const visualPlans = await planLineVisuals(insight, scriptLines);
+        // Pass the source transcript context — Gemma needs to know what
+        // the speaker actually said in this segment so it can pick "source"
+        // for narration that's paraphrasing the speaker (more accurate
+        // visual mapping = documentary feel) vs "image" for things only
+        // mentioned indirectly.
+        const visualPlans = await planLineVisuals(insight, scriptLines, ctxText);
         const resolved = await resolveVisuals(visualPlans);
 
         // Pick source segments for any "source" slot in the resolved

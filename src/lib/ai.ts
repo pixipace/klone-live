@@ -727,6 +727,7 @@ export type LineVisual = {
 export async function planLineVisuals(
   insight: { title: string; takeaway: string },
   scriptLines: { text: string }[],
+  sourceContext: string = "",
 ): Promise<LineVisual[]> {
   if (scriptLines.length === 0) return [];
 
@@ -734,17 +735,24 @@ export async function planLineVisuals(
     .map((l, i) => `${i + 1}. ${l.text}`)
     .join("\n");
 
-  const system = `You are the visual director for a documentary-style explainer Short. For each narration line, you decide WHAT THE VIEWER SHOULD SEE — almost never the host's face.
+  const sourceContextBlock = sourceContext
+    ? `\n═══════════════════════════════════════════════════\nWHAT THE SOURCE VIDEO ACTUALLY SHOWS\n═══════════════════════════════════════════════════\n\nThis is the segment of the source the narration is paraphrasing. When a script line is referencing/quoting/summarizing what's IN this segment, prefer "source" — viewers see the actual speaker say it, which beats any stock photo. Use external images only for things NOT covered in this segment.\n\nSource transcript:\n${sourceContext.slice(0, 2500)}\n`
+    : "";
+
+  const system = `You are the visual director for a documentary-style explainer Short. Each narration line should be illustrated with the MOST ACCURATE visual to what's being said — the source clip when the narration paraphrases the speaker, an external image when the line mentions something specific NOT shown in the source.
 
 ═══════════════════════════════════════════════════
 THE GOAL
 ═══════════════════════════════════════════════════
 
-Viewers tune out fast when they see the same person talking. We are NOT making a clip channel — we are making a documentary. Each narration line should be illustrated with what's BEING DISCUSSED:
-  - "Elon talks about Mars" → photo of Mars, NOT Elon's face
-  - "Tesla's factory" → photo of a Tesla factory
-  - "the auction floor" → photo of a cricket auction or similar
-  - "complexity kills companies" → abstract image (tangled wires, broken machinery)
+Documentary-channel feel (ColdFusion / How Money Works / Vox). Each visual should be precisely accurate to what the line says:
+  - Line paraphrases the speaker's claim → show the SPEAKER saying it (source)
+  - "Elon's Mars plan" → photo of Mars / SpaceX rocket (image)
+  - "Tesla's factory" → photo of Tesla factory (image)
+  - "Claude generates code" → Claude logo or screenshot (image)
+  - "complexity kills companies" → abstract concept image (ai, sparingly)
+
+The OPPOSITE of what we want: random stock photos that loosely match a keyword. Viewers notice.${sourceContextBlock}
 
 ═══════════════════════════════════════════════════
 THE THREE VISUAL KINDS
@@ -763,11 +771,21 @@ THE THREE VISUAL KINDS
     wires growing into a forest, dark cinematic, 9:16").
 
   "source" — A short clip from the source video (the host on screen).
-    Use ONLY when the line is META about the speaker (e.g., "what
-    Elon is REALLY saying here is...") or for a single mid-script
-    "they actually said this" anchor moment. PICK AT MOST 2 lines
-    as "source" — the pipeline adds opener + closer source anchors
-    automatically on top of these.
+    USE LIBERALLY when the narration is paraphrasing, summarizing, or
+    referencing what the speaker said — viewers connect with seeing the
+    actual speaker say it, not a stock photo of the topic. Use "source"
+    when:
+      - Line quotes/paraphrases the speaker ("Elon argues that…",
+        "Naval reframes it as…", "Sam says the real reason is…")
+      - Line describes a moment from the source ("what happened next
+        was…", "the room went silent when…")
+      - Line is a transition between two source-discussed points
+      - You're not 100% sure a real photo would beat the source clip
+    DEFAULT to "source" when in doubt — a real face speaking is more
+    trustworthy than a tangentially-related stock photo. The pipeline
+    adds open/mid/close source anchors on top of your picks; you can
+    add as many additional source lines as the script benefits from
+    (no hard cap — pick what feels right).
 
 ═══════════════════════════════════════════════════
 QUERY FORMATTING (image type)
@@ -823,10 +841,9 @@ STRICT JSON only. One entry per script line, IN ORDER:
 
   - Length MUST equal the number of script lines (${scriptLines.length}).
   - "ai" entries: max 2 per explainer.
-  - "source" entries: max 2 per explainer (you can pick 0 if no line
-    is meta — pipeline adds anchors anyway).
-  - Default to "image" — if you're unsure, find a noun in the line and
-    use that as the query.
+  - "source" entries: NO HARD CAP — use as many as the script benefits.
+    Documentary mix is typically 30-50% source, 40-60% image, 0-10% ai.
+  - When in doubt: pick "source". Real face > stock photo.
 
 No preamble, no markdown.`;
 
@@ -876,16 +893,13 @@ Return ${scriptLines.length} visuals as JSON, one per line, in order.`;
       });
     }
 
-    // Enforce hard caps in JS in case Gemma over-budgeted
+    // Enforce AI cap in JS — fal.ai images are paid + slow. Source
+    // shots are free and add documentary feel, so no cap there.
     let aiCount = 0;
-    let sourceCount = 0;
     for (const v of out) {
       if (v.kind === "ai") {
         aiCount++;
         if (aiCount > 2) v.kind = "image";
-      } else if (v.kind === "source") {
-        sourceCount++;
-        if (sourceCount > 2) v.kind = "image";
       }
     }
 

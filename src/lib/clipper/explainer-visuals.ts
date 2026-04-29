@@ -40,7 +40,12 @@ export type ResolvedVisual =
       /** Pipeline must fill this in via pickSourceSegments. */
     };
 
-const MIN_VISION_SCORE = 6; // 0-10, drop below this
+// Stricter threshold (was 6) — when free image search returns weak
+// matches, the result looks like "random stock photo over narration"
+// instead of documentary illustration. Reject anything below 7/10 and
+// fall through to source clip — viewers trust the source video more
+// than a tangentially-relevant Pexels photo.
+const MIN_VISION_SCORE = 7;
 
 // Safety net for the visual planner — if Gemma forgot to add "logo" to a
 // known-brand query, we rewrite it here. Wikipedia's article infobox

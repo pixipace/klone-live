@@ -44,8 +44,20 @@ def main() -> int:
     cfg = json.loads(sys.stdin.read())
     lines = cfg["lines"]
     out_dir = cfg["outDir"]
-    voice_id = cfg.get("voiceId") or os.environ.get("ELEVENLABS_VOICE_ID")
-    model_id = cfg.get("modelId") or "eleven_multilingual_v2"
+    # Default voice: Adam (pNInz6obpgDQGcFmaJgB) — the standard documentary
+    # narrator voice used by ColdFusion / How Money Works / Vox-style
+    # channels. Deeper register, measured pace, more natural breath sounds
+    # than the Antoni preset (which has a more "performed" tone).
+    voice_id = (
+        cfg.get("voiceId")
+        or os.environ.get("ELEVENLABS_VOICE_ID")
+        or "pNInz6obpgDQGcFmaJgB"
+    )
+    # Default model: eleven_v3 — newest flagship, supports natural
+    # disfluencies and inline audio tags ([breathes], [pauses]). Higher
+    # naturalness ceiling than multilingual_v2 on long-form narration.
+    # Both available on Creator tier.
+    model_id = cfg.get("modelId") or "eleven_v3"
     # Best-quality narration preset — derived from EL's official guidance
     # for long-form narration. Stability 0.5 gives natural variation
     # without pitch drift; similarity 0.85 is high voice fidelity without
