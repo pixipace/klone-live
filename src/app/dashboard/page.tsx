@@ -168,8 +168,7 @@ export default async function DashboardPage() {
       </div>
 
       {!onboardingDone && (
-        <div className="relative overflow-hidden rounded-xl border border-accent/30 bg-gradient-to-br from-accent/10 via-card to-card p-6">
-          <div className="absolute top-0 right-0 w-48 h-48 bg-accent/10 rounded-full blur-3xl -translate-y-12 translate-x-12 pointer-events-none" />
+        <div className="relative overflow-hidden rounded-lg border border-accent/30 bg-accent-soft p-6">
           <div className="relative">
             <div className="flex items-center justify-between mb-2 gap-3">
               <div className="flex items-center gap-2">
@@ -287,8 +286,8 @@ export default async function DashboardPage() {
                   isConnected
                     ? expiringSoon
                       ? "bg-warning/5 border-warning/30"
-                      : "bg-card border-border/60 hover:border-border-hover"
-                    : "bg-card/40 border-dashed border-border/40 opacity-60 hover:opacity-100"
+                      : "bg-card border-border hover:border-border-hover"
+                    : "bg-card/40 border-dashed border-border opacity-60 hover:opacity-100"
                 }`}
               >
                 <div
@@ -370,7 +369,7 @@ export default async function DashboardPage() {
 
         <Link
           href="/dashboard/create"
-          className="group relative overflow-hidden rounded-xl bg-card border border-border/60 p-6 hover:border-border-hover transition-all card-glow"
+          className="group relative overflow-hidden rounded-xl bg-card border border-border p-6 hover:border-border-hover transition-all card-glow"
         >
           <div className="relative">
             <div className="w-10 h-10 rounded-xl bg-card-hover flex items-center justify-center mb-4">
@@ -449,7 +448,7 @@ function StatCard({
   warning?: boolean;
 }) {
   return (
-    <div className="relative group rounded-xl bg-card border border-border/60 p-5 card-glow">
+    <div className="relative group rounded-xl bg-card border border-border p-5 card-glow">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
@@ -493,7 +492,7 @@ function RecentPostsCard({
   }>;
 }) {
   return (
-    <div className="block rounded-xl bg-card border border-border/60 p-5">
+    <div className="block rounded-xl bg-card border border-border p-5">
       <div className="flex items-center justify-between mb-3">
         <h4 className="text-sm font-medium">Recent posts</h4>
         <Link
@@ -537,7 +536,7 @@ function RecentPostsCard({
                   return (
                     <span
                       key={plat}
-                      className="text-[10px] px-1.5 py-0.5 rounded bg-card border border-border/40 text-muted-foreground"
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-card border border-border text-muted-foreground"
                     >
                       {plat} · {p.status.toLowerCase()}
                     </span>
@@ -566,7 +565,7 @@ function ActivityCard({
   return (
     <Link
       href={href}
-      className="block rounded-xl bg-card border border-border/60 p-5 hover:border-border-hover transition-colors"
+      className="block rounded-xl bg-card border border-border p-5 hover:border-border-hover transition-colors"
     >
       <div className="flex items-center justify-between mb-3">
         <h4 className="text-sm font-medium">{title}</h4>

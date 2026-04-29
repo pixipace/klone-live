@@ -96,27 +96,24 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 bottom-0 w-[260px] md:w-[220px] bg-surface/95 backdrop-blur-xl border-r border-border/50 flex flex-col z-50 transition-transform duration-200 ease-out",
+        "fixed left-0 top-0 bottom-0 w-[260px] md:w-[220px] bg-background border-r border-border flex flex-col z-50 transition-transform duration-200 ease-out",
         // Mobile: hidden by default, slide in when open
         open ? "translate-x-0" : "-translate-x-full",
         // Desktop: always visible
         "md:translate-x-0"
       )}
     >
-      {/* Logo + close button */}
+      {/* Logo + close button. No glow halo — light theme doesn't need
+          decorative artifacts; the icon stands on its own. */}
       <div className="px-5 h-16 flex items-center justify-between gap-2.5">
-        <Link href="/dashboard" className="flex items-center gap-2.5">
-          <div className="relative">
-            <div className="absolute inset-0 bg-accent/20 blur-lg rounded-full" />
-            <Image
-              src="/logo-icon.png"
-              alt="Klone"
-              width={26}
-              height={26}
-              className="relative"
-            />
-          </div>
-          <span className="text-base font-semibold tracking-tight">KLONE</span>
+        <Link href="/dashboard" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
+          <Image
+            src="/logo-icon.png"
+            alt="Klone"
+            width={24}
+            height={24}
+          />
+          <span className="text-base font-semibold tracking-tight">Klone</span>
         </Link>
         {onClose && (
           <button
@@ -148,26 +145,29 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               )}
               style={{ animationDelay: `${i * 30}ms` }}
             >
+              {/* Active state: subtle filled bg, NO border (light theme
+                  doesn't need stacked tinted borders — they look noisy).
+                  Left edge accent bar reads as a clear active indicator. */}
               {isActive && (
-                <div className="absolute inset-0 rounded-lg bg-accent/8 border border-accent/10" />
+                <div className="absolute inset-0 rounded-md bg-card" />
               )}
               {isActive && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-accent rounded-full" />
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-foreground rounded-full" />
               )}
               <item.icon
                 className={cn(
-                  "w-5 h-5 md:w-4 md:h-4 relative z-10 transition-colors",
-                  isActive ? "text-accent" : "group-hover:text-foreground"
+                  "w-4.5 h-4.5 md:w-4 md:h-4 relative z-10 transition-colors",
+                  isActive ? "text-foreground" : "group-hover:text-foreground"
                 )}
               />
               <span className="relative z-10">{item.label}</span>
               {item.badge && counts[item.badge.key] > 0 && (
                 <span
                   className={cn(
-                    "ml-auto relative z-10 text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none",
+                    "ml-auto relative z-10 text-[10px] font-medium px-1.5 py-0.5 rounded leading-none tabular-nums",
                     item.badge.variant === "warning"
-                      ? "bg-error/15 text-error"
-                      : "bg-accent/15 text-accent"
+                      ? "bg-error-soft text-error"
+                      : "bg-accent-soft text-accent"
                   )}
                 >
                   {counts[item.badge.key]}
@@ -179,12 +179,12 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       </nav>
 
       <div className="px-3 pb-4">
-        <div className="h-px bg-border/50 mb-3" />
+        <div className="h-px bg-border mb-3" />
         <button
           onClick={handleLogout}
-          className="flex items-center gap-3 px-3 py-2.5 md:py-2 rounded-lg text-sm md:text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors w-full"
+          className="flex items-center gap-3 px-3 py-2.5 md:py-2 rounded-md text-sm md:text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-colors w-full"
         >
-          <LogOut className="w-5 h-5 md:w-4 md:h-4" />
+          <LogOut className="w-4.5 h-4.5 md:w-4 md:h-4" />
           Log out
         </button>
       </div>

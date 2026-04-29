@@ -135,56 +135,58 @@ export default async function HomePage() {
     <>
       <Navbar />
 
-      {/* Hero */}
-      <section className="relative pt-32 pb-20 px-6 overflow-hidden">
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[700px] h-[700px] bg-accent/10 rounded-full blur-[140px] pointer-events-none" />
-        <div className="absolute top-40 left-1/4 w-[300px] h-[300px] bg-accent/5 rounded-full blur-[80px] pointer-events-none" />
-
-        <div className="relative max-w-3xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-card border border-border/60 text-[11px] text-muted-foreground mb-7">
-            <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+      {/* Hero — light theme, no glows. Big oversized headline with a
+          serif-italic signature word for the unique Klone feel. */}
+      <section className="relative pt-32 pb-20 px-6">
+        <div className="relative max-w-4xl mx-auto text-center">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-card border border-border text-[11px] text-muted-foreground mb-8">
+            <span className="w-1.5 h-1.5 rounded-full bg-success" />
             Free during beta — no credit card
           </div>
 
           <h1 className="text-5xl md:text-7xl font-semibold tracking-tight leading-[1.02]">
             Long video in.
             <br />
-            <span className="text-muted-foreground font-light">
-              Short clips out.
+            Short clips{" "}
+            <span
+              className="font-normal italic text-muted-foreground"
+              style={{ fontFamily: "var(--font-serif), serif" }}
+            >
+              out.
             </span>
           </h1>
 
-          <p className="text-base text-muted-foreground mt-6 max-w-xl mx-auto leading-relaxed">
-            Klone turns your YouTube videos into vertical, captioned, scored
-            short-form clips — then schedules them across TikTok, Instagram,
-            YouTube, Facebook, and LinkedIn at the best time for each.
+          <p className="text-base md:text-lg text-muted-foreground mt-7 max-w-xl mx-auto leading-relaxed">
+            Klone turns your long videos into vertical, captioned,
+            cinematic short-form clips — then schedules them across TikTok,
+            Instagram, YouTube, Facebook, and LinkedIn at the best time for each.
           </p>
 
-          <div className="flex flex-wrap items-center justify-center gap-3 mt-10">
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-10">
             <Link
               href="/signup"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-md bg-foreground hover:bg-foreground-secondary text-background text-sm font-medium transition-all active:scale-[0.98]"
             >
               Start clipping free
               <ArrowRight className="w-4 h-4" />
             </Link>
             <Link
               href="/how-it-works"
-              className="inline-flex items-center px-6 py-3 rounded-xl bg-card border border-border/60 hover:border-border-hover text-sm font-medium transition-colors"
+              className="inline-flex items-center px-5 py-2.5 rounded-md bg-card border border-border hover:border-border-hover text-sm font-medium transition-all"
             >
               See how it works
             </Link>
           </div>
 
-          <div className="flex items-center justify-center gap-2 mt-10 flex-wrap">
-            <span className="text-[11px] text-muted">Posts to</span>
+          <div className="flex items-center justify-center gap-1.5 mt-10 flex-wrap">
+            <span className="text-[11px] uppercase tracking-wider text-muted mr-2">Posts to</span>
             {platforms.map((p) => (
               <div
                 key={p.name}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-card border border-border/60 text-xs text-muted-foreground"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-card border border-border text-xs text-foreground-secondary"
               >
                 <div
-                  className="w-2 h-2 rounded-full"
+                  className="w-1.5 h-1.5 rounded-full"
                   style={{ backgroundColor: p.color }}
                 />
                 {p.name}
@@ -197,17 +199,18 @@ export default async function HomePage() {
       {/* Clip preview visual */}
       <section className="px-6 pb-24">
         <div className="max-w-4xl mx-auto">
-          <div className="relative rounded-2xl bg-card border border-border/60 p-1 shadow-2xl shadow-black/30">
-            <div className="absolute -inset-0.5 rounded-2xl bg-gradient-to-b from-accent/20 to-transparent pointer-events-none" />
-            <div className="relative rounded-xl bg-background border border-border/40 overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-border/30">
+          {/* Browser-chrome mock — refined for light theme. Soft shadow,
+              flat borders, no gradient glow halos. */}
+          <div className="relative rounded-xl bg-card border border-border p-1 shadow-lg">
+            <div className="relative rounded-lg bg-background border border-border overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-card">
                 <div className="flex gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-error/40" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-warning/40" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-success/40" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-error/30" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-warning/30" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-success/30" />
                 </div>
                 <span className="text-[10px] text-muted ml-2 font-mono">
-                  klone.live/dashboard/clipper
+                  klone.live/dashboard/clips
                 </span>
               </div>
 
@@ -215,22 +218,22 @@ export default async function HomePage() {
               <div className="grid grid-cols-12 gap-4 p-6">
                 {/* Source video */}
                 <div className="col-span-7 space-y-3">
-                  <div className="text-[10px] uppercase tracking-wider text-muted">
+                  <div className="text-[10px] uppercase tracking-wider text-muted font-medium">
                     Source video
                   </div>
-                  <div className="aspect-video rounded-lg bg-gradient-to-br from-accent/15 via-card to-card border border-border/40 relative overflow-hidden flex items-center justify-center">
-                    <div className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
-                      <div className="w-0 h-0 border-l-[10px] border-l-white/80 border-y-[7px] border-y-transparent ml-1" />
+                  <div className="aspect-video rounded-md bg-card border border-border relative overflow-hidden flex items-center justify-center">
+                    <div className="w-12 h-12 rounded-full bg-foreground/10 flex items-center justify-center">
+                      <div className="w-0 h-0 border-l-[10px] border-l-foreground/60 border-y-[7px] border-y-transparent ml-1" />
                     </div>
-                    <div className="absolute bottom-2 left-2 right-2 h-1 bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full w-1/3 bg-accent/70" />
+                    <div className="absolute bottom-2 left-2 right-2 h-1 bg-foreground/10 rounded-full overflow-hidden">
+                      <div className="h-full w-1/3 bg-foreground/40" />
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                    <span className="px-1.5 py-0.5 rounded bg-accent/15 text-accent">
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    <span className="px-1.5 py-0.5 rounded bg-accent-soft text-accent font-medium">
                       Transcribing
                     </span>
-                    <span className="px-1.5 py-0.5 rounded bg-card border border-border/60">
+                    <span className="px-1.5 py-0.5 rounded bg-card border border-border text-muted-foreground">
                       Picking 6 clips
                     </span>
                   </div>
@@ -238,7 +241,7 @@ export default async function HomePage() {
 
                 {/* Generated clips */}
                 <div className="col-span-5 space-y-3">
-                  <div className="text-[10px] uppercase tracking-wider text-muted">
+                  <div className="text-[10px] uppercase tracking-wider text-muted font-medium">
                     Generated clips
                   </div>
                   <div className="grid grid-cols-3 gap-2">
@@ -249,20 +252,20 @@ export default async function HomePage() {
                     ].map((c, i) => (
                       <div
                         key={i}
-                        className="aspect-[9/16] rounded-md bg-gradient-to-b from-accent/10 to-card border border-border/40 relative overflow-hidden"
+                        className="aspect-[9/16] rounded-md bg-foreground/5 border border-border relative overflow-hidden"
                       >
-                        <div className="absolute top-1 left-1 px-1 py-0.5 rounded bg-black/60 text-[8px] text-white font-medium">
+                        <div className="absolute top-1 left-1 px-1 py-0.5 rounded bg-foreground text-background text-[8px] font-medium">
                           {c.score}
                         </div>
-                        <div className="absolute bottom-1 left-1 right-1 text-[7px] text-white/80 font-medium leading-tight">
+                        <div className="absolute bottom-1 left-1 right-1 text-[7px] text-foreground-secondary font-medium leading-tight">
                           {c.label}
                         </div>
                       </div>
                     ))}
                   </div>
 
-                  <div className="rounded-md bg-card border border-border/40 p-2 space-y-1.5">
-                    <div className="text-[9px] uppercase tracking-wider text-muted">
+                  <div className="rounded-md bg-card border border-border p-2.5 space-y-1.5">
+                    <div className="text-[9px] uppercase tracking-wider text-muted font-medium">
                       Schedule
                     </div>
                     {platforms.slice(0, 3).map((p) => (
@@ -275,11 +278,11 @@ export default async function HomePage() {
                             className="w-1.5 h-1.5 rounded-full"
                             style={{ backgroundColor: p.color }}
                           />
-                          <span className="text-muted-foreground">
+                          <span className="text-foreground-secondary">
                             {p.name}
                           </span>
                         </div>
-                        <span className="text-muted font-mono">9:00 AM</span>
+                        <span className="text-muted font-mono tabular-nums">9:00 AM</span>
                       </div>
                     ))}
                   </div>
@@ -294,7 +297,7 @@ export default async function HomePage() {
       <section id="features" className="py-20 px-6">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-12">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/10 text-accent text-[10px] font-medium uppercase tracking-wider mb-4">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-foreground/5 text-foreground-secondary text-[10px] font-medium uppercase tracking-wider mb-4">
               <Scissors className="w-3 h-3" />
               The clipper
             </div>
@@ -310,12 +313,12 @@ export default async function HomePage() {
             {clipperFeatures.map((f) => (
               <div
                 key={f.title}
-                className="rounded-xl bg-card border border-border/60 p-5 hover:border-border-hover transition-all card-glow"
+                className="rounded-lg bg-card border border-border p-5 card-glow"
               >
-                <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center text-accent mb-3">
+                <div className="w-8 h-8 rounded-md bg-foreground/5 flex items-center justify-center text-foreground mb-3">
                   {f.icon}
                 </div>
-                <h3 className="text-sm font-medium mb-1.5">{f.title}</h3>
+                <h3 className="text-sm font-semibold mb-1.5 tracking-tight">{f.title}</h3>
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   {f.body}
                 </p>
@@ -326,10 +329,10 @@ export default async function HomePage() {
       </section>
 
       {/* Distribution features */}
-      <section className="py-20 px-6 border-t border-border/30">
+      <section className="py-20 px-6 border-t border-border">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-12">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/10 text-accent text-[10px] font-medium uppercase tracking-wider mb-4">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-foreground/5 text-foreground-secondary text-[10px] font-medium uppercase tracking-wider mb-4">
               <Share2 className="w-3 h-3" />
               The distribution
             </div>
@@ -345,12 +348,12 @@ export default async function HomePage() {
             {distributionFeatures.map((f) => (
               <div
                 key={f.title}
-                className="rounded-xl bg-card border border-border/60 p-5 hover:border-border-hover transition-all card-glow"
+                className="rounded-lg bg-card border border-border p-5 card-glow"
               >
-                <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center text-accent mb-3">
+                <div className="w-8 h-8 rounded-md bg-foreground/5 flex items-center justify-center text-foreground mb-3">
                   {f.icon}
                 </div>
-                <h3 className="text-sm font-medium mb-1.5">{f.title}</h3>
+                <h3 className="text-sm font-semibold mb-1.5 tracking-tight">{f.title}</h3>
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   {f.body}
                 </p>
@@ -363,7 +366,7 @@ export default async function HomePage() {
       {/* Live platform stats — social proof. Hidden when stats are all
           zero (early days) so we don't broadcast emptiness. */}
       {(stats.clipsTotal > 0 || stats.postsPublished > 0) && (
-        <section className="py-16 px-6 border-t border-border/30">
+        <section className="py-16 px-6 border-t border-border">
           <div className="max-w-4xl mx-auto">
             <p className="text-center text-[10px] uppercase tracking-[0.2em] text-muted mb-8">
               Built by creators, used by creators
@@ -392,7 +395,7 @@ export default async function HomePage() {
       )}
 
       {/* How it works (compact) */}
-      <section className="py-20 px-6 border-t border-border/30">
+      <section className="py-20 px-6 border-t border-border">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">
@@ -422,15 +425,20 @@ export default async function HomePage() {
             ].map((s) => (
               <div
                 key={s.n}
-                className="rounded-xl bg-card border border-border/60 p-6"
+                className="rounded-lg bg-card border border-border p-6 card-glow"
               >
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs font-mono text-muted">{s.n}</span>
-                  <div className="w-7 h-7 rounded-md bg-accent/10 flex items-center justify-center text-accent">
+                  <span
+                    className="text-3xl font-normal italic text-muted tabular-nums leading-none"
+                    style={{ fontFamily: "var(--font-serif), serif" }}
+                  >
+                    {s.n}
+                  </span>
+                  <div className="w-7 h-7 rounded-md bg-foreground/5 flex items-center justify-center text-foreground">
                     {s.icon}
                   </div>
                 </div>
-                <h3 className="text-sm font-medium mb-1.5">{s.title}</h3>
+                <h3 className="text-sm font-semibold mb-1.5 tracking-tight">{s.title}</h3>
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   {s.body}
                 </p>
@@ -440,17 +448,17 @@ export default async function HomePage() {
           <div className="text-center mt-8">
             <Link
               href="/how-it-works"
-              className="inline-flex items-center gap-1.5 text-xs text-accent hover:underline"
+              className="inline-flex items-center gap-1.5 text-sm text-accent hover:opacity-80 transition-opacity"
             >
               See the full walkthrough
-              <ArrowRight className="w-3 h-3" />
+              <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
         </div>
       </section>
 
       {/* FAQ */}
-      <section className="py-20 px-6 border-t border-border/30">
+      <section className="py-20 px-6 border-t border-border">
         <div className="max-w-3xl mx-auto">
           <div className="text-center mb-10">
             <h2 className="text-3xl font-semibold tracking-tight">
@@ -461,7 +469,7 @@ export default async function HomePage() {
             {faq.map((item) => (
               <details
                 key={item.q}
-                className="group rounded-xl bg-card border border-border/60 px-5 py-4 open:border-border-hover transition-colors"
+                className="group rounded-lg bg-card border border-border px-5 py-4 open:border-border-hover transition-colors"
               >
                 <summary className="cursor-pointer text-sm font-medium flex items-center justify-between gap-4 list-none">
                   {item.q}
@@ -478,25 +486,29 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="py-24 px-6">
-        <div className="max-w-2xl mx-auto text-center relative">
-          <div className="absolute inset-0 -m-20 bg-accent/5 rounded-full blur-[80px] pointer-events-none" />
-          <div className="relative">
-            <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">
-              Stop editing. Start posting.
-            </h2>
-            <p className="text-muted-foreground mt-3 text-sm">
-              Free during beta. Sign up, paste a URL, watch it work.
-            </p>
-            <Link
-              href="/signup"
-              className="inline-flex items-center gap-2 px-6 py-3 mt-8 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
+      {/* CTA — quiet, confident. No glow halos. The serif accent on
+          "posting" gives the section visual interest without decoration. */}
+      <section className="py-28 px-6 border-t border-border">
+        <div className="max-w-2xl mx-auto text-center">
+          <h2 className="text-4xl md:text-5xl font-semibold tracking-tight">
+            Stop editing. Start{" "}
+            <span
+              className="font-normal italic text-muted-foreground"
+              style={{ fontFamily: "var(--font-serif), serif" }}
             >
-              Start clipping free
-              <ArrowRight className="w-4 h-4" />
-            </Link>
-          </div>
+              posting.
+            </span>
+          </h2>
+          <p className="text-muted-foreground mt-4 text-base">
+            Free during beta. Sign up, paste a URL, watch it work.
+          </p>
+          <Link
+            href="/signup"
+            className="inline-flex items-center gap-2 px-5 py-2.5 mt-8 rounded-md bg-foreground hover:bg-foreground-secondary text-background text-sm font-medium transition-all active:scale-[0.98]"
+          >
+            Start clipping free
+            <ArrowRight className="w-4 h-4" />
+          </Link>
         </div>
       </section>
 
@@ -512,31 +524,20 @@ function StatTile({
 }: {
   value: string;
   label: string;
+  /** Highlighted middle tile — uses serif numerals for visual rhythm. */
   accent?: boolean;
 }) {
   return (
-    <div
-      className={`relative rounded-xl border p-6 text-center overflow-hidden ${
-        accent
-          ? "border-accent/40 bg-gradient-to-br from-accent/10 via-card to-card"
-          : "border-border/60 bg-card"
-      }`}
-    >
-      {accent && (
-        <div className="absolute top-0 right-0 w-32 h-32 bg-accent/10 rounded-full blur-2xl pointer-events-none" />
-      )}
-      <div className="relative">
-        <p
-          className={`text-4xl md:text-5xl font-light tracking-tight ${
-            accent ? "text-foreground" : "text-foreground"
-          }`}
-        >
-          {value}
-        </p>
-        <p className="text-[11px] uppercase tracking-wider text-muted-foreground mt-2">
-          {label}
-        </p>
-      </div>
+    <div className="relative rounded-lg border border-border bg-card p-8 text-center card-glow">
+      <p
+        className="text-5xl md:text-6xl font-normal tracking-tight tabular-nums leading-none"
+        style={accent ? { fontFamily: "var(--font-serif), serif" } : undefined}
+      >
+        {value}
+      </p>
+      <p className="text-[11px] uppercase tracking-wider text-muted-foreground mt-3 font-medium">
+        {label}
+      </p>
     </div>
   );
 }
