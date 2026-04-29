@@ -1,12 +1,19 @@
 import { spawn } from "child_process";
 import path from "path";
 
-const SCRIPT_PATH = path.join(process.cwd(), "scripts", "render-explainer-tts.py");
+const F5_SCRIPT_PATH = path.join(process.cwd(), "scripts", "render-explainer-tts.py");
+const EL_SCRIPT_PATH = path.join(process.cwd(), "scripts", "render-explainer-tts-elevenlabs.py");
 // Launchd-spawned Next.js resolves `python3` via PATH to brew's
 // /opt/homebrew/bin/python3 (3.14). Other Pythons on the system don't
 // have f5_tts_mlx installed. Pin to brew's Python explicitly to avoid
 // the silent "wrong-python" bug. Override via PYTHON_BIN env if needed.
 const PYTHON_BIN = process.env.PYTHON_BIN || "/opt/homebrew/bin/python3";
+
+/** Engine selection — ElevenLabs Creative TTS when ELEVENLABS_API_KEY
+ *  is set in env (production-quality voice, ~131k credits/mo on Creator
+ *  tier = ~130 explainers). F5-TTS-MLX local fallback for dev / no-key. */
+const USE_ELEVENLABS = !!process.env.ELEVENLABS_API_KEY;
+const SCRIPT_PATH = USE_ELEVENLABS ? EL_SCRIPT_PATH : F5_SCRIPT_PATH;
 
 export type TTSOptions = {
   /** Optional reference voice file (5-15s WAV/MP3). When provided, the TTS
