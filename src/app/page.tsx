@@ -135,55 +135,58 @@ export default async function HomePage() {
     <>
       <Navbar />
 
-      {/* Hero — light theme, no glows. Big oversized headline with a
-          serif-italic signature word for the unique Klone feel. */}
-      <section className="relative pt-32 pb-20 px-6">
-        <div className="relative max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-card border border-border text-[11px] text-muted-foreground mb-8">
+      {/* Hero — ambient warm wash background lifts the page from "blank
+          doc" to "studio." Massive typography (text-8xl) commands the
+          fold. Serif-italic signature word for the unique Klone feel. */}
+      <section className="relative hero-ambient pt-36 pb-24 px-6 overflow-hidden">
+        {/* Subtle dot-grid texture — visible only on close inspection */}
+        <div className="absolute inset-0 dot-grid opacity-50 pointer-events-none" />
+        <div className="relative max-w-5xl mx-auto text-center">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-card border border-border text-[11px] text-muted-foreground mb-8 shadow-sm">
             <span className="w-1.5 h-1.5 rounded-full bg-success" />
             Free during beta — no credit card
           </div>
 
-          <h1 className="text-5xl md:text-7xl font-semibold tracking-tight leading-[1.02]">
+          <h1 className="text-6xl md:text-8xl font-semibold tracking-tight leading-[0.98]">
             Long video in.
             <br />
             Short clips{" "}
             <span
-              className="font-normal italic text-muted-foreground"
+              className="font-normal italic text-foreground-secondary"
               style={{ fontFamily: "var(--font-serif), serif" }}
             >
               out.
             </span>
           </h1>
 
-          <p className="text-base md:text-lg text-muted-foreground mt-7 max-w-xl mx-auto leading-relaxed">
+          <p className="text-lg md:text-xl text-foreground-secondary mt-8 max-w-2xl mx-auto leading-relaxed">
             Klone turns your long videos into vertical, captioned,
             cinematic short-form clips — then schedules them across TikTok,
             Instagram, YouTube, Facebook, and LinkedIn at the best time for each.
           </p>
 
-          <div className="flex flex-wrap items-center justify-center gap-2 mt-10">
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-12">
             <Link
               href="/signup"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-md bg-foreground hover:bg-foreground-secondary text-background text-sm font-medium transition-all active:scale-[0.98]"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-md bg-foreground hover:bg-foreground-secondary text-background text-sm font-medium transition-all active:scale-[0.98] shadow-md"
             >
               Start clipping free
               <ArrowRight className="w-4 h-4" />
             </Link>
             <Link
               href="/how-it-works"
-              className="inline-flex items-center px-5 py-2.5 rounded-md bg-card border border-border hover:border-border-hover text-sm font-medium transition-all"
+              className="inline-flex items-center px-6 py-3 rounded-md bg-card border border-border hover:border-border-hover text-sm font-medium transition-all shadow-sm"
             >
               See how it works
             </Link>
           </div>
 
-          <div className="flex items-center justify-center gap-1.5 mt-10 flex-wrap">
+          <div className="flex items-center justify-center gap-1.5 mt-12 flex-wrap">
             <span className="text-[11px] uppercase tracking-wider text-muted mr-2">Posts to</span>
             {platforms.map((p) => (
               <div
                 key={p.name}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-card border border-border text-xs text-foreground-secondary"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-card border border-border text-xs text-foreground-secondary shadow-sm"
               >
                 <div
                   className="w-1.5 h-1.5 rounded-full"
@@ -196,12 +199,12 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Clip preview visual */}
-      <section className="px-6 pb-24">
-        <div className="max-w-4xl mx-auto">
-          {/* Browser-chrome mock — refined for light theme. Soft shadow,
-              flat borders, no gradient glow halos. */}
-          <div className="relative rounded-xl bg-card border border-border p-1 shadow-lg">
+      {/* Clip preview visual — sits on the hero ambient, gets a beefy
+          shadow so it lifts off the page like a real product still. */}
+      <section className="hero-ambient px-6 pb-32 -mt-4 relative">
+        <div className="max-w-5xl mx-auto relative">
+          {/* Browser-chrome mock — beefier shadow, sharper definition. */}
+          <div className="relative rounded-xl bg-card border border-border p-1 shadow-2xl shadow-foreground/10">
             <div className="relative rounded-lg bg-background border border-border overflow-hidden">
               <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-card">
                 <div className="flex gap-1.5">
@@ -293,33 +296,45 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Clipper features */}
-      <section id="features" className="py-20 px-6">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-12">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-foreground/5 text-foreground-secondary text-[10px] font-medium uppercase tracking-wider mb-4">
+      {/* Clipper features — pure white section. The white pop after warm
+          ambient hero gives a clean reset for content. Bento layout: first
+          card spans 2 columns for visual rhythm. */}
+      <section id="features" className="py-24 px-6 bg-section-soft">
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-16 max-w-2xl">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-foreground/5 text-foreground-secondary text-[10px] font-medium uppercase tracking-wider mb-5">
               <Scissors className="w-3 h-3" />
               The clipper
             </div>
-            <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">
-              An editor, in a box.
+            <h2 className="text-4xl md:text-5xl font-semibold tracking-tight leading-[1.05]">
+              An editor,{" "}
+              <span
+                className="font-normal italic text-foreground-secondary"
+                style={{ fontFamily: "var(--font-serif), serif" }}
+              >
+                in a box.
+              </span>
             </h2>
-            <p className="text-muted-foreground mt-3 text-sm max-w-lg mx-auto">
+            <p className="text-foreground-secondary mt-5 text-base max-w-lg leading-relaxed">
               Klone does what a freelance editor would do — face tracking,
               captions, music, hook titles — without the back-and-forth.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {clipperFeatures.map((f) => (
+          {/* Bento grid: first card double-width, rest standard. The
+              asymmetry breaks the "six identical squares" monotony. */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 auto-rows-fr">
+            {clipperFeatures.map((f, i) => (
               <div
                 key={f.title}
-                className="rounded-lg bg-card border border-border p-5 card-glow"
+                className={`rounded-xl bg-card border border-border p-6 card-glow ${
+                  i === 0 ? "md:col-span-2 md:row-span-1" : ""
+                }`}
               >
-                <div className="w-8 h-8 rounded-md bg-foreground/5 flex items-center justify-center text-foreground mb-3">
+                <div className="w-9 h-9 rounded-md bg-foreground/5 flex items-center justify-center text-foreground mb-4">
                   {f.icon}
                 </div>
-                <h3 className="text-sm font-semibold mb-1.5 tracking-tight">{f.title}</h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">
+                <h3 className={`font-semibold mb-1.5 tracking-tight ${i === 0 ? "text-lg" : "text-sm"}`}>{f.title}</h3>
+                <p className={`text-foreground-secondary leading-relaxed ${i === 0 ? "text-sm" : "text-xs"}`}>
                   {f.body}
                 </p>
               </div>
@@ -328,33 +343,40 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Distribution features */}
-      <section className="py-20 px-6 border-t border-border">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-12">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-foreground/5 text-foreground-secondary text-[10px] font-medium uppercase tracking-wider mb-4">
+      {/* Distribution features — warm beige section. The tonal shift
+          breaks the "all white" monotony and signals a topic change. */}
+      <section className="py-24 px-6 bg-section-warm grain relative">
+        <div className="max-w-6xl mx-auto relative">
+          <div className="mb-16 max-w-2xl">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-foreground/5 text-foreground-secondary text-[10px] font-medium uppercase tracking-wider mb-5">
               <Share2 className="w-3 h-3" />
               The distribution
             </div>
-            <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">
-              Five platforms. One queue.
+            <h2 className="text-4xl md:text-5xl font-semibold tracking-tight leading-[1.05]">
+              Five platforms.{" "}
+              <span
+                className="font-normal italic text-foreground-secondary"
+                style={{ fontFamily: "var(--font-serif), serif" }}
+              >
+                One queue.
+              </span>
             </h2>
-            <p className="text-muted-foreground mt-3 text-sm max-w-lg mx-auto">
+            <p className="text-foreground-secondary mt-5 text-base max-w-lg leading-relaxed">
               When the clips are ready, they go where your audience already
               scrolls — at the time they actually scroll.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {distributionFeatures.map((f) => (
               <div
                 key={f.title}
-                className="rounded-lg bg-card border border-border p-5 card-glow"
+                className="rounded-xl bg-card border border-border p-6 card-glow"
               >
-                <div className="w-8 h-8 rounded-md bg-foreground/5 flex items-center justify-center text-foreground mb-3">
+                <div className="w-9 h-9 rounded-md bg-foreground/5 flex items-center justify-center text-foreground mb-4">
                   {f.icon}
                 </div>
                 <h3 className="text-sm font-semibold mb-1.5 tracking-tight">{f.title}</h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">
+                <p className="text-xs text-foreground-secondary leading-relaxed">
                   {f.body}
                 </p>
               </div>
@@ -363,10 +385,9 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Live platform stats — social proof. Hidden when stats are all
-          zero (early days) so we don't broadcast emptiness. */}
+      {/* Live platform stats — social proof. Pure white pop again. */}
       {(stats.clipsTotal > 0 || stats.postsPublished > 0) && (
-        <section className="py-16 px-6 border-t border-border">
+        <section className="py-20 px-6 bg-section-soft">
           <div className="max-w-4xl mx-auto">
             <p className="text-center text-[10px] uppercase tracking-[0.2em] text-muted mb-8">
               Built by creators, used by creators
@@ -394,12 +415,18 @@ export default async function HomePage() {
         </section>
       )}
 
-      {/* How it works (compact) */}
-      <section className="py-20 px-6 border-t border-border">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">
-              Three steps. No editor required.
+      {/* How it works (compact) — back to off-white default */}
+      <section className="py-24 px-6">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl md:text-5xl font-semibold tracking-tight leading-[1.05]">
+              Three steps.{" "}
+              <span
+                className="font-normal italic text-foreground-secondary"
+                style={{ fontFamily: "var(--font-serif), serif" }}
+              >
+                No editor required.
+              </span>
             </h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -457,11 +484,12 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* FAQ */}
-      <section className="py-20 px-6 border-t border-border">
+      {/* FAQ — cool stone bg, slightly different from the warm beige
+          earlier. Cool tone reads "informational" vs the warm "emphasis." */}
+      <section className="py-24 px-6 bg-section-cool">
         <div className="max-w-3xl mx-auto">
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-semibold tracking-tight">
+          <div className="mb-12">
+            <h2 className="text-4xl font-semibold tracking-tight">
               Common questions
             </h2>
           </div>
@@ -486,10 +514,11 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* CTA — quiet, confident. No glow halos. The serif accent on
-          "posting" gives the section visual interest without decoration. */}
-      <section className="py-28 px-6 border-t border-border">
-        <div className="max-w-2xl mx-auto text-center">
+      {/* CTA — closes the loop with the same warm ambient as the hero.
+          Visually links the start and end of the page. */}
+      <section className="hero-ambient py-32 px-6 relative overflow-hidden">
+        <div className="absolute inset-0 dot-grid opacity-40 pointer-events-none" />
+        <div className="max-w-2xl mx-auto text-center relative">
           <h2 className="text-4xl md:text-5xl font-semibold tracking-tight">
             Stop editing. Start{" "}
             <span

@@ -7,12 +7,18 @@
    shifts the visual rhythm of every page.
    ───────────────────────────────────────────────────────────────── */
 :root {
-  /* Surfaces — three layers max. Pure white pops too hard; #FAFAF7 has
-     a hint of warmth that reads "premium" not "blank doc." */
+  /* Surfaces — three layers max + tonal section variants for rhythm.
+     Pure white reads "blank doc"; warm off-white reads "premium." */
   --background: #FAFAF7;
   --surface: #FFFFFF;
   --card: #FFFFFF;
   --card-hover: #F7F7F4;
+  /* Section tonal shifts — alternating these prevents the page from
+     looking like one giant flat off-white slab. EL does this; Linear
+     does this; the human eye reads variety as rhythm. */
+  --section-warm: #F5F1E8;     /* warm beige — for emphasis sections */
+  --section-soft: #FFFFFF;     /* pure white — break between off-whites */
+  --section-cool: #F4F4F2;     /* cool stone — for footer-adjacent */
 
   /* Text — high-contrast black for body, deep gray for secondary,
      muted for tertiary (timestamps, hints). */
@@ -76,6 +82,9 @@
   --color-error: var(--error);
   --color-error-soft: var(--error-soft);
   --color-surface: var(--surface);
+  --color-section-warm: var(--section-warm);
+  --color-section-soft: var(--section-soft);
+  --color-section-cool: var(--section-cool);
   --font-sans: var(--font-inter);
   --font-serif: var(--font-instrument-serif);
   --font-mono: var(--font-geist-mono);
@@ -146,6 +155,49 @@ h1 { letter-spacing: -0.025em; }
 
 /* Selection — accent-colored on light bg */
 ::selection { background: var(--accent-soft); color: var(--accent); }
+
+/* Ambient hero wash — soft warm radial gradient that lifts the hero
+ * without resorting to neon glow blobs. Reads as ambient lighting,
+ * NOT decoration. Use on the hero <section> background.
+ *
+ * Triple-stacked radial gradients in different positions create depth
+ * the eye reads as "studio lighting" rather than a single flat color.
+ * Tones are deliberately within ±8% lightness — visible but never loud.
+ */
+.hero-ambient {
+  background:
+    radial-gradient(ellipse 70% 50% at 20% 0%, rgba(255, 220, 180, 0.35), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 80% 10%, rgba(180, 200, 255, 0.25), transparent 65%),
+    radial-gradient(ellipse 50% 60% at 50% 100%, rgba(255, 240, 220, 0.30), transparent 70%),
+    var(--background);
+}
+
+/* Subtle dot-grid texture overlay — adds visual depth on otherwise-flat
+ * sections without competing with content. 1px dots, 24px grid, opacity
+ * tuned so it's only noticeable on close inspection.
+ */
+.dot-grid {
+  background-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Subtle noise/grain — adds texture richness to "warm beige" sections.
+ * Same SVG noise we had on dark theme but at much lower opacity for
+ * light surfaces. Reads as fine paper grain.
+ */
+.grain {
+  position: relative;
+}
+.grain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.025;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+}
 
 /* Focus ring — accessible, refined */
 :focus-visible {
