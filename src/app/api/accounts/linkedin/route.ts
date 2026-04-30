@@ -11,8 +11,15 @@ export async function GET() {
   });
   if (!account) return NextResponse.json({ connected: false });
 
+  // LinkedIn is the ONLY platform without a refresh token mechanism —
+  // tokens last 60 days then must be re-OAuth'd. So expiresAt IS the
+  // reconnect signal here. Other platforms refresh transparently.
+  const now = Date.now();
+  const expiry = account.expiresAt ? new Date(account.expiresAt).getTime() : null;
+  const needsReconnect = expiry !== null && expiry <= now;
   return NextResponse.json({
     connected: true,
+    needsReconnect,
     username: account.username,
     avatar: account.avatar,
     expiresAt: account.expiresAt,

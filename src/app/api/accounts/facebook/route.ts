@@ -23,8 +23,18 @@ export async function GET() {
     // ignore
   }
 
+  // Meta long-lived tokens last 60 days. Refresh path is fb_exchange_token
+  // (called by ensureFreshToken in src/lib/platforms/refresh.ts), no
+  // separate refresh_token. We only flag needsReconnect when the token
+  // is actually expired AND refresh would have been attempted (the
+  // refresh helper extends well-before-expiry, so a still-expired
+  // token here means refresh failed = user revoked grant).
+  const now = Date.now();
+  const expiry = account.expiresAt ? new Date(account.expiresAt).getTime() : null;
+  const needsReconnect = expiry !== null && expiry <= now;
   return NextResponse.json({
     connected: true,
+    needsReconnect,
     username: account.username,
     avatar: account.avatar,
     pages: (meta.pages || []).map((p) => ({ id: p.id, name: p.name })),

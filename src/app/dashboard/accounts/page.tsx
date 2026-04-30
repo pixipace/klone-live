@@ -348,25 +348,21 @@ function AccountsContent() {
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-sm">{card.name}</span>
                       {isConnected && (() => {
-                        // Token-expiry-aware badge. "Connected" is misleading
-                        // when the token expires today or has already lapsed —
-                        // posts will fail with auth errors. Badge variant
-                        // shifts as the deadline approaches so the user knows
-                        // to reconnect BEFORE their next scheduled post fails.
-                        const expiresAt = (status as { expiresAt?: string | null }).expiresAt;
-                        if (!expiresAt) {
-                          return <Badge variant="success">Connected</Badge>;
-                        }
-                        const daysLeft = Math.floor(
-                          (new Date(expiresAt).getTime() - Date.now()) / 86400000
+                        // Reconnect signal is now PER-PLATFORM — each
+                        // status endpoint computes needsReconnect knowing
+                        // its own refresh story:
+                        //   YouTube/TikTok: false unless refresh_token missing
+                        //   Meta/IG/LinkedIn: false unless expiresAt < now
+                        // Old logic used raw expiresAt and showed
+                        // "Reconnect now" within 1h of every YouTube
+                        // connect even though auto-refresh kept posting
+                        // working — meaningless red flag for the user.
+                        const needsReconnect = (status as { needsReconnect?: boolean }).needsReconnect;
+                        return needsReconnect ? (
+                          <Badge variant="error">Reconnect now</Badge>
+                        ) : (
+                          <Badge variant="success">Connected</Badge>
                         );
-                        if (daysLeft <= 0) {
-                          return <Badge variant="error">Reconnect now</Badge>;
-                        }
-                        if (daysLeft <= 7) {
-                          return <Badge variant="warning">Expires in {daysLeft}d</Badge>;
-                        }
-                        return <Badge variant="success">Connected</Badge>;
                       })()}
                     </div>
                     {isConnected && status?.username ? (
@@ -384,29 +380,14 @@ function AccountsContent() {
                             )}
                         </span>
                         {(() => {
-                          const expiresAt = (status as { expiresAt?: string | null }).expiresAt;
-                          if (!expiresAt) return null;
-                          const daysLeft = Math.floor(
-                            (new Date(expiresAt).getTime() - Date.now()) / 86400000
-                          );
-                          if (daysLeft > 30)
-                            return (
-                              <span className="text-[10px] text-success">
-                                ✓ {daysLeft}d
-                              </span>
-                            );
-                          if (daysLeft > 7)
-                            return (
-                              <span className="text-[10px] text-warning">
-                                ⚠ expires {daysLeft}d
-                              </span>
-                            );
-                          if (daysLeft > 0)
-                            return (
-                              <span className="text-[10px] text-error font-medium">
-                                ⚠ expires {daysLeft}d — reconnect soon
-                              </span>
-                            );
+                          // Same per-platform reconnect logic as the
+                          // badge above. Only show the inline expiry
+                          // text when needsReconnect is true (avoids
+                          // showing "✗ expired — reconnect now" under a
+                          // green Connected badge for platforms that
+                          // auto-refresh).
+                          const needsReconnect = (status as { needsReconnect?: boolean }).needsReconnect;
+                          if (!needsReconnect) return null;
                           return (
                             <span className="text-[10px] text-error font-medium">
                               ✗ expired — reconnect now

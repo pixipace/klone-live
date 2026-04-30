@@ -31,8 +31,14 @@ export async function GET() {
     // ignore
   }
 
+  // IG inherits Meta's 60-day token (refreshed via fb_exchange_token).
+  // Same logic as Facebook: only flag needsReconnect when actually expired.
+  const now = Date.now();
+  const expiry = account.expiresAt ? new Date(account.expiresAt).getTime() : null;
+  const needsReconnect = expiry !== null && expiry <= now;
   return NextResponse.json({
     connected: true,
+    needsReconnect,
     username: account.username,
     avatar: account.avatar,
     followers: meta.followers,

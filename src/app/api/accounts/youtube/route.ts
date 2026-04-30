@@ -20,8 +20,15 @@ export async function GET() {
     // ignore
   }
 
+  // Google access tokens last only 1h. They're refreshed automatically
+  // via refresh_token before every post call. So an "expired" access
+  // token is NOT a reconnect signal — only a missing refresh_token is.
+  // Without this, the badge cried "Reconnect now" within an hour of
+  // every connect even though posting still worked.
+  const needsReconnect = !account.refreshToken;
   return NextResponse.json({
     connected: true,
+    needsReconnect,
     username: account.username,
     avatar: account.avatar,
     subscribers: meta.subscribers,

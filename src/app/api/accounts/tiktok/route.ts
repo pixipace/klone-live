@@ -58,8 +58,13 @@ export async function GET() {
     }
   }
 
+  // TikTok access tokens last 24h; we refresh via refresh_token before
+  // every post. Like Google/YouTube, missing refresh_token is the only
+  // real "reconnect" signal — short-TTL access expiry is normal.
+  const needsReconnect = !account.refreshToken;
   return NextResponse.json({
     connected: true,
+    needsReconnect,
     username: username || "TikTok account",
     avatar,
     followers,
