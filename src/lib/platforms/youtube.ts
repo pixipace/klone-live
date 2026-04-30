@@ -93,8 +93,25 @@ export async function postToYouTube({
 
   const videoBuffer = await readUploadBuffer(mediaUrl);
 
-  const titleBase = caption.slice(0, 100) || "New Short";
-  const title = titleBase.includes("#Shorts") ? titleBase : `${titleBase} #Shorts`;
+  // YouTube title rules (strict — violations return "invalid or empty
+  // video title" 400):
+  //   1. Max 100 chars
+  //   2. NO newlines (multi-line captions hit this; you'd be amazed)
+  //   3. NO < or > chars
+  //   4. Non-empty after trim
+  // Build it in stages so the #Shorts suffix doesn't push us over 100.
+  const SUFFIX = " #Shorts";
+  const cleaned = caption
+    .replace(/[\r\n]+/g, " ")            // collapse newlines → space
+    .replace(/[<>]/g, "")                // strip forbidden chars
+    .replace(/\s+/g, " ")                // collapse runs of whitespace
+    .trim();
+  // Case-insensitive #Shorts dedupe — caption may use #shorts, #SHORTS, etc.
+  const alreadyHasShorts = /#shorts\b/i.test(cleaned);
+  const room = alreadyHasShorts ? 100 : 100 - SUFFIX.length;
+  const truncated = cleaned.slice(0, room).trim();
+  const titleBase = truncated.length > 0 ? truncated : "New Short";
+  const title = alreadyHasShorts ? titleBase : `${titleBase}${SUFFIX}`;
 
   const description = buildYouTubeDescription(caption, clipContext);
   const tags = buildYouTubeTags(caption, clipContext);
