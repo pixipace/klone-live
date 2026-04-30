@@ -7,14 +7,23 @@ import { enforceRateLimit } from "@/lib/api-rate-limit";
 const YT_RE = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be|m\.youtube\.com)\//i;
 const MAX_SOURCE_SEC = 3 * 60 * 60; // 3 hours
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  // Optional ?mode=CLIP|EXPLAINER filter — used by the dedicated
+  // /dashboard/explainer + /dashboard/clips pages so each shows only
+  // its own jobs. Anything else returns the full list (back-compat).
+  const modeFilter = request.nextUrl.searchParams.get("mode");
+  const where: { userId: string; mode?: "CLIP" | "EXPLAINER" } = { userId: session.id };
+  if (modeFilter === "CLIP" || modeFilter === "EXPLAINER") {
+    where.mode = modeFilter;
+  }
+
   const jobs = await prisma.clipJob.findMany({
-    where: { userId: session.id },
+    where,
     orderBy: { createdAt: "desc" },
     take: 25,
     include: {

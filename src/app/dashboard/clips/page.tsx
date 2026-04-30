@@ -18,6 +18,7 @@ import {
   Save,
   Upload,
   Link as LinkIcon,
+  ArrowRight,
 } from "lucide-react";
 import { VoiceReferencePanel } from "./voice-reference-panel";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -115,10 +116,10 @@ export default function ClipsPage() {
   const [optPunch, setOptPunch] = useState(true);
   const [optBroll, setOptBroll] = useState(false);
   const [optTranslate, setOptTranslate] = useState(false);
-  // Pipeline: CLIP extracts source moments (existing behaviour); EXPLAINER
-  // generates AI-narrated commentary videos with silent source cutaways
+  // Pipeline locked to CLIP mode — EXPLAINER moved to its own dedicated
+  // page (/dashboard/explainer) so users find it as a top-level feature
+  // rather than buried in a mode toggle on this page.
   // (zero source-audio = no Content ID match, copyright-safe).
-  const [pipelineMode, setPipelineMode] = useState<"CLIP" | "EXPLAINER">("CLIP");
   const [guidance, setGuidance] = useState("");
   const [prefs, setPrefs] = useState<PublishPrefs | null>(null);
   const [prefsOpen, setPrefsOpen] = useState(false);
@@ -128,7 +129,10 @@ export default function ClipsPage() {
 
   const fetchJobs = useCallback(async () => {
     try {
-      const res = await fetch("/api/clips");
+      // Filter to CLIP-mode jobs only — EXPLAINER jobs live on
+      // /dashboard/explainer now. Keeps each page focused on its own
+      // pipeline.
+      const res = await fetch("/api/clips?mode=CLIP");
       const data = await res.json();
       if (res.ok) setJobs(data.jobs || []);
     } finally {
@@ -248,7 +252,7 @@ export default function ClipsPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             sourceUrl: u,
-            mode: pipelineMode,
+            mode: "CLIP",
             captions: optCaptions,
             music: optMusic,
             punchZooms: optPunch,
@@ -326,66 +330,25 @@ export default function ClipsPage() {
           New Job
         </CardTitle>
 
-        {/* Pipeline mode picker — most important choice on the page, so it
-         *  goes first. CLIP = traditional source extraction. EXPLAINER =
-         *  AI-narrated commentary in our voice with silent source cutaways
-         *  (zero source-audio = copyright-safe). */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
-          <button
-            type="button"
-            onClick={() => setPipelineMode("CLIP")}
-            className={`text-left p-3 rounded-lg border-2 transition-all ${
-              pipelineMode === "CLIP"
-                ? "border-accent bg-accent/5"
-                : "border-border bg-card hover:border-accent/40"
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <Video className="w-4 h-4 text-error" />
-              <span className="font-semibold text-sm">Clip Mode</span>
-              {pipelineMode === "CLIP" && (
-                <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-accent text-white">
-                  selected
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] text-muted-foreground leading-snug">
-              Extract viral moments from the source. Best for friendly sources
-              (your own podcasts, Lex Fridman, JRE). Faster, source audio
-              preserved.
+        {/* Mode picker removed — Explainer Mode now lives on its own
+            page (/dashboard/explainer) for discoverability. This page is
+            CLIP-only: source extraction with original audio preserved.
+            Small inline pointer for users coming from the old flow. */}
+        <div className="mb-4 flex items-center justify-between gap-3 p-3 rounded-md bg-card border border-border">
+          <div className="flex items-center gap-2 min-w-0">
+            <Sparkles className="w-4 h-4 text-foreground-secondary shrink-0" />
+            <p className="text-xs text-muted-foreground truncate">
+              Need AI-narrated explainers (copyright-safe)? They moved to their own studio.
             </p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setPipelineMode("EXPLAINER")}
-            className={`text-left p-3 rounded-lg border-2 transition-all ${
-              pipelineMode === "EXPLAINER"
-                ? "border-success bg-success/5"
-                : "border-border bg-card hover:border-success/40"
-            }`}
+          </div>
+          <Link
+            href="/dashboard/explainer"
+            className="text-xs font-medium text-accent hover:underline shrink-0 inline-flex items-center gap-1"
           >
-            <div className="flex items-center gap-2 mb-1">
-              <Sparkles className="w-4 h-4 text-success" />
-              <span className="font-semibold text-sm">Explainer Mode</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/15 text-success border border-success/30">
-                copyright-safe
-              </span>
-              {pipelineMode === "EXPLAINER" && (
-                <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-success text-white">
-                  selected
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] text-muted-foreground leading-snug">
-              AI analyzes the source, narrates explainers in our voice with
-              silent source cutaways. No source audio used. Safe for any
-              source — MrBeast, Disney, IPL, news.
-            </p>
-          </button>
+            Explainer Studio
+            <ArrowRight className="w-3 h-3" />
+          </Link>
         </div>
-
-        {pipelineMode === "EXPLAINER" && <VoiceReferencePanel />}
 
         <div className="flex gap-1 mb-3 p-0.5 rounded-lg bg-card border border-border w-fit">
           <button
@@ -472,13 +435,7 @@ export default function ClipsPage() {
               ) : (
                 <Sparkles className="w-4 h-4 mr-2" />
               )}
-              {mode === "upload"
-                ? pipelineMode === "EXPLAINER"
-                  ? "Upload & Generate Explainers"
-                  : "Upload & Find Clips"
-                : pipelineMode === "EXPLAINER"
-                  ? "Generate Explainers"
-                  : "Find Clips"}
+              {mode === "upload" ? "Upload & Find Clips" : "Find Clips"}
             </Button>
           </div>
         </form>

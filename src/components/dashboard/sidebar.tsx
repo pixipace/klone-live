@@ -16,6 +16,7 @@ import {
   BarChart3,
   MessageCircle,
   X,
+  Sparkles,
 } from "lucide-react";
 
 type BadgeKey = "failedPosts" | "runningClips" | "scheduledPosts";
@@ -39,6 +40,14 @@ const navItems: Array<{
     label: "Clip Studio",
     icon: Scissors,
     badge: { key: "runningClips", variant: "info" },
+  },
+  // Explainer Studio is its own destination — major feature, deserves
+  // a top-level slot rather than being buried in the clipper as a mode
+  // toggle. Same backend, focused UI.
+  {
+    href: "/dashboard/explainer",
+    label: "Explainer Studio",
+    icon: Sparkles,
   },
   {
     href: "/dashboard/posts",
