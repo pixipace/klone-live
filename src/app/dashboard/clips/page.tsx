@@ -136,6 +136,10 @@ export default function ClipsPage() {
     }
   }, []);
 
+  // Connected-platform set for gating the publishing-prefs picker.
+  // Fetched once on mount alongside prefs. Same pattern as create page.
+  const [connectedSet, setConnectedSet] = useState<Set<string> | null>(null);
+
   const fetchPrefs = useCallback(async () => {
     try {
       const res = await fetch("/api/user/clipper-prefs");
@@ -188,6 +192,12 @@ export default function ClipsPage() {
   useEffect(() => {
     fetchJobs();
     fetchPrefs();
+    // Connected platforms — used to gate the publishing-prefs picker
+    // and the auto-publish toggle (can't auto-publish if zero connected).
+    fetch("/api/accounts/connected")
+      .then((r) => r.json())
+      .then((d) => setConnectedSet(new Set(Array.isArray(d.connected) ? d.connected : [])))
+      .catch(() => setConnectedSet(new Set()));
     const t = setInterval(fetchJobs, 5000);
     return () => clearInterval(t);
   }, [fetchJobs, fetchPrefs]);
@@ -589,43 +599,62 @@ export default function ClipsPage() {
           )}
           {prefsOpen && (
             <div className="mt-4 space-y-4">
-              <label className="flex items-start gap-2.5 text-sm cursor-pointer p-3 rounded-lg bg-accent/5 border border-accent/20">
-                <input
-                  type="checkbox"
-                  checked={prefs.autoPublish}
-                  onChange={async (e) => {
-                    // Auto-save just THIS toggle so users can't get stuck
-                    // in "I unchecked but the badge still says ON" — that
-                    // happens when they uncheck and walk away without
-                    // clicking the main Save button. Save the whole prefs
-                    // bundle so server state matches the UI immediately.
-                    const next = { ...prefs, autoPublish: e.target.checked };
-                    setPrefs(next);
-                    try {
-                      await fetch("/api/user/clipper-prefs", {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(next),
-                      });
-                      setPrefsSavedAt(Date.now());
-                    } catch {
-                      // Silent — main Save still available as fallback
-                    }
-                  }}
-                  className="accent-accent mt-0.5"
-                />
-                <div>
-                  <span className="font-medium">
-                    Auto-publish new jobs when clips are ready
-                  </span>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    As soon as a clip job finishes, Klone schedules it across
-                    your selected platforms using the settings below — no extra
-                    click. Leave off to review each job manually.{" "}
-                    <span className="text-accent">Saves automatically.</span>
-                  </p>
-                </div>
-              </label>
+              {/* Auto-publish toggle — gated on having at least one
+                  platform selected. Server-side rejects this combo too,
+                  but disabling here means the user can't accidentally
+                  flip it on and wonder why nothing's posting later. */}
+              {(() => {
+                const canEnableAuto = prefs.platforms.length > 0;
+                return (
+                  <label
+                    className={`flex items-start gap-2.5 text-sm p-3 rounded-md bg-accent-soft border border-accent/20 ${
+                      canEnableAuto || prefs.autoPublish ? "cursor-pointer" : "opacity-60 cursor-not-allowed"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={prefs.autoPublish}
+                      disabled={!canEnableAuto && !prefs.autoPublish}
+                      onChange={async (e) => {
+                        const next = { ...prefs, autoPublish: e.target.checked };
+                        setPrefs(next);
+                        try {
+                          const res = await fetch("/api/user/clipper-prefs", {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(next),
+                          });
+                          if (res.ok) {
+                            toast.success(e.target.checked ? "Auto-publish ON" : "Auto-publish OFF");
+                            setPrefsSavedAt(Date.now());
+                          } else {
+                            // Surface the server error AND revert the
+                            // optimistic UI flip — was silently swallowed before.
+                            const data = await res.json().catch(() => ({}));
+                            toast.error("Couldn't save auto-publish", data.error || "Please try again");
+                            setPrefs((p) => p ? { ...p, autoPublish: !e.target.checked } : p);
+                          }
+                        } catch {
+                          toast.error("Network error", "Couldn't save your change");
+                          setPrefs((p) => p ? { ...p, autoPublish: !e.target.checked } : p);
+                        }
+                      }}
+                      className="accent-accent mt-0.5"
+                    />
+                    <div>
+                      <span className="font-medium">
+                        Auto-publish new jobs when clips are ready
+                      </span>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {canEnableAuto
+                          ? "As soon as a clip job finishes, Klone schedules it across your selected platforms — no extra click."
+                          : "Pick at least one platform below to enable auto-publish."}{" "}
+                        {canEnableAuto && <span className="text-accent">Saves automatically.</span>}
+                      </p>
+                    </div>
+                  </label>
+                );
+              })()}
 
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-2 block">
@@ -634,21 +663,32 @@ export default function ClipsPage() {
                 <div className="flex flex-wrap gap-2">
                   {PUBLISH_PLATFORMS.map((p) => {
                     const active = prefs.platforms.includes(p.id);
+                    // null = still loading; treat as enabled to avoid layout flash
+                    const isConnected = connectedSet === null || connectedSet.has(p.id);
                     return (
                       <button
                         key={p.id}
-                        onClick={() =>
+                        onClick={() => {
+                          if (!isConnected) return;
                           setPrefs({
                             ...prefs,
                             platforms: active
                               ? prefs.platforms.filter((x) => x !== p.id)
                               : [...prefs.platforms, p.id],
-                          })
+                          });
+                        }}
+                        disabled={!isConnected}
+                        title={
+                          isConnected
+                            ? undefined
+                            : `Connect ${p.name} in /dashboard/accounts to enable`
                         }
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs transition-all ${
-                          active
-                            ? "border-accent bg-accent/10 text-foreground"
-                            : "border-border bg-card text-muted-foreground"
+                        className={`flex items-center gap-2 px-3 py-2 rounded-md border text-xs transition-all ${
+                          !isConnected
+                            ? "border-border bg-card/50 text-muted opacity-50 cursor-not-allowed"
+                            : active
+                            ? "border-foreground bg-foreground/5 text-foreground"
+                            : "border-border bg-card text-foreground-secondary hover:border-border-hover"
                         }`}
                       >
                         <div
@@ -658,12 +698,15 @@ export default function ClipsPage() {
                           {p.name[0]}
                         </div>
                         {p.name}
+                        {!isConnected && (
+                          <span className="text-[9px] text-muted">not connected</span>
+                        )}
                       </button>
                     );
                   })}
                 </div>
                 <p className="text-[11px] text-muted mt-2">
-                  Connect these accounts in{" "}
+                  Connect missing accounts in{" "}
                   <Link href="/dashboard/accounts" className="text-accent hover:underline">
                     Accounts
                   </Link>{" "}

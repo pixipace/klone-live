@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PLATFORMS, PlatformId } from "@/lib/constants";
@@ -48,6 +49,11 @@ export default function CreatePostPage() {
   const [aiBusy, setAiBusy] = useState<"generate" | "rewrite" | "hashtags" | "media" | "variants" | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiVariants, setAiVariants] = useState<string[] | null>(null);
+  // Connected-platform gating — fetched once on mount. Platforms not in
+  // this set get disabled in the picker (and the user is told to connect
+  // them in /dashboard/accounts) instead of being clickable + silently
+  // failing later when the post API rejects.
+  const [connectedPlatforms, setConnectedPlatforms] = useState<Set<PlatformId> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const callAi = async (
@@ -144,6 +150,33 @@ export default function CreatePostPage() {
       setCaption((prev) => `${prev}\n\n${data.hashtags!.join(" ")}`);
     }
   };
+
+  // Load connected platforms ONCE on mount. The picker uses this to
+  // visually disable + lock platform buttons the user hasn't OAuth'd
+  // yet — clicking does nothing and a tooltip explains how to connect.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/accounts/connected")
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const set = new Set<PlatformId>(Array.isArray(data.connected) ? data.connected : []);
+        setConnectedPlatforms(set);
+        // Defensively prune any pre-selected platforms that aren't connected
+        // (could come from compose-prefill if the user disconnected mid-flow).
+        setSelectedPlatforms((prev) => prev.filter((p) => set.has(p)));
+      })
+      .catch(() => {
+        // On failure, fall back to "all platforms allowed" so the picker
+        // still works — backend will return a clear error if they really
+        // aren't connected. Better than blocking the whole UI on a
+        // network blip.
+        if (!cancelled) setConnectedPlatforms(new Set(["tiktok", "facebook", "instagram", "linkedin", "youtube"]));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const raw = sessionStorage.getItem("klone:compose-prefill");
@@ -410,30 +443,63 @@ export default function CreatePostPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left column - Compose */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Platform Selector */}
+          {/* Platform Selector — gated by /api/accounts/connected. Platforms
+              the user hasn't OAuth'd are visibly disabled with a helper
+              link to /dashboard/accounts so they can connect first.
+              Prevents the silent "post failed because account missing"
+              footgun. */}
           <Card>
-            <CardTitle className="mb-3 text-base">Select Platforms</CardTitle>
-            <div className="flex flex-wrap gap-2">
-              {PLATFORMS.map((platform) => (
-                <button
-                  key={platform.id}
-                  onClick={() => togglePlatform(platform.id)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
-                    selectedPlatforms.includes(platform.id)
-                      ? "border-accent bg-accent/10 text-foreground"
-                      : "border-border bg-card text-muted-foreground hover:border-border-hover"
-                  }`}
-                >
-                  <span className="text-base">
-                    {platformIcons[platform.id]}
-                  </span>
-                  {platform.name}
-                  {selectedPlatforms.includes(platform.id) && (
-                    <X className="w-3 h-3" />
-                  )}
-                </button>
-              ))}
+            <div className="flex items-center justify-between mb-3">
+              <CardTitle className="text-base">Select platforms</CardTitle>
+              {connectedPlatforms !== null && connectedPlatforms.size === 0 && (
+                <Link href="/dashboard/accounts" className="text-xs text-accent hover:underline">
+                  Connect accounts →
+                </Link>
+              )}
             </div>
+            <div className="flex flex-wrap gap-2">
+              {PLATFORMS.map((platform) => {
+                const isSelected = selectedPlatforms.includes(platform.id);
+                // null = still loading prefs; treat as enabled to avoid flash.
+                const isConnected =
+                  connectedPlatforms === null || connectedPlatforms.has(platform.id);
+                return (
+                  <button
+                    key={platform.id}
+                    onClick={() => isConnected && togglePlatform(platform.id)}
+                    disabled={!isConnected}
+                    title={
+                      isConnected
+                        ? undefined
+                        : `Connect ${platform.name} in /dashboard/accounts to post here`
+                    }
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md border text-sm transition-all ${
+                      !isConnected
+                        ? "border-border bg-card/50 text-muted opacity-50 cursor-not-allowed"
+                        : isSelected
+                        ? "border-foreground bg-foreground/5 text-foreground"
+                        : "border-border bg-card text-foreground-secondary hover:border-border-hover"
+                    }`}
+                  >
+                    <span className="text-base">{platformIcons[platform.id]}</span>
+                    {platform.name}
+                    {!isConnected && (
+                      <span className="text-[10px] text-muted ml-1">not connected</span>
+                    )}
+                    {isConnected && isSelected && <X className="w-3 h-3" />}
+                  </button>
+                );
+              })}
+            </div>
+            {connectedPlatforms !== null && connectedPlatforms.size === 0 && (
+              <p className="text-xs text-muted-foreground mt-3">
+                You haven't connected any platforms yet.{" "}
+                <Link href="/dashboard/accounts" className="text-accent hover:underline">
+                  Connect at least one
+                </Link>{" "}
+                to start posting.
+              </p>
+            )}
           </Card>
 
           {/* Caption */}
@@ -820,37 +886,64 @@ export default function CreatePostPage() {
             )}
           </Card>
 
-          <div className="space-y-2 hidden lg:block">
-            <Button
-              className="w-full"
-              size="lg"
-              onClick={handlePost}
-              disabled={posting || uploading}
-            >
-              {posting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Publishing...
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4 mr-2" />
-                  {scheduleDate ? "Schedule Post" : "Post Now"}
-                </>
-              )}
-            </Button>
-            <Button variant="outline" className="w-full">
-              <Eye className="w-4 h-4 mr-2" />
-              Save as Draft
-            </Button>
-          </div>
-
-          {selectedPlatforms.length > 0 && (
-            <div className="text-xs text-muted text-center hidden lg:block">
-              Posting to {selectedPlatforms.length} platform
-              {selectedPlatforms.length > 1 ? "s" : ""}
-            </div>
-          )}
+          {/* Desktop publish bar — same validation as mobile so the user
+              can't submit a doomed-to-fail post. The disabledReason banner
+              spells out exactly what's missing instead of a silently-greyed
+              button — users complain when buttons are disabled with no
+              explanation. */}
+          {(() => {
+            const scheduleInPast = (() => {
+              if (!scheduleDate || !scheduleTime) return false;
+              const t = new Date(`${scheduleDate}T${scheduleTime}`).getTime();
+              return Number.isFinite(t) && t <= Date.now();
+            })();
+            const noPlatform = selectedPlatforms.length === 0;
+            const noContent = !caption.trim() && !mediaUrl;
+            const disabledReason = posting
+              ? null
+              : uploading
+              ? "Wait for upload to finish"
+              : noPlatform
+              ? "Pick at least one platform above"
+              : noContent
+              ? "Add a caption or upload media"
+              : scheduleInPast
+              ? "Schedule time is in the past — pick a future moment"
+              : null;
+            return (
+              <div className="space-y-2 hidden lg:block">
+                <Button
+                  className="w-full"
+                  size="lg"
+                  onClick={handlePost}
+                  disabled={!!disabledReason && !posting}
+                >
+                  {posting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Publishing...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4 mr-2" />
+                      {scheduleDate ? "Schedule Post" : "Post Now"}
+                    </>
+                  )}
+                </Button>
+                {disabledReason && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    {disabledReason}
+                  </p>
+                )}
+                {!disabledReason && selectedPlatforms.length > 0 && (
+                  <div className="text-xs text-muted text-center">
+                    Posting to {selectedPlatforms.length} platform
+                    {selectedPlatforms.length > 1 ? "s" : ""}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
