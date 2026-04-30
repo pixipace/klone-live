@@ -78,8 +78,25 @@ export async function firePost(post: Post): Promise<FireResult> {
         clipContext,
       });
     } catch (err) {
-      console.error(`[firePost] ${platform} error:`, err);
-      results[platform] = { error: String(err) };
+      // Distinguish EXPECTED failures from genuine bugs:
+      //   - ENOENT (file deleted by orphan cleanup before post fired) is
+      //     a known recoverable condition. Worker re-sweeps orphan posts
+      //     hourly and removes them. Don't pollute Sentry with these.
+      //   - Other errors are genuine — they go through the normal
+      //     console.error path and Sentry picks them up.
+      const errStr = String(err);
+      const isOrphanFile =
+        (err as { code?: string })?.code === "ENOENT" ||
+        errStr.includes("ENOENT");
+      if (isOrphanFile) {
+        console.warn(`[firePost] ${platform} skipped — source file deleted (orphan)`);
+        results[platform] = {
+          error: "Source clip file no longer exists — was cleaned up before this post fired",
+        };
+      } else {
+        console.error(`[firePost] ${platform} error:`, err);
+        results[platform] = { error: String(err) };
+      }
     }
   }
 

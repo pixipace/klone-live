@@ -67,5 +67,12 @@ export default withSentryConfig(nextConfig, {
   sourcemaps: {
     deleteSourcemapsAfterUpload: true,
   },
-  disableLogger: true,
+  // disableLogger was deprecated in @sentry/nextjs v8 — moved to a
+  // webpack treeshake hint (the Sentry client console.log noise is
+  // tree-shaken out of the prod bundle without needing the flag).
+  webpack: {
+    treeshake: {
+      removeDebugLogging: true,
+    },
+  },
 });
