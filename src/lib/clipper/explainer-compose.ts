@@ -505,13 +505,30 @@ export async function composeExplainer(
     "-preset", "veryfast",
     "-crf", "21",
     "-pix_fmt", "yuv420p",
-    // iOS-safe encode profile — Safari < 16 chokes on High profile or
+    // Profile + level — iOS Safari < 16 chokes on High profile or
     // Level > 4.0. Main+4.0 covers everything from iPhone 6 onward.
     "-profile:v", "main",
     "-level", "4.0",
+    // Constant frame rate + explicit GOP for IG Reels ingestion.
+    // Reels rejects variable frame rate streams as "format unsupported"
+    // (error 2207076). -r 30 forces CFR; -g 60 -keyint_min 60 sets
+    // a keyframe every 2 seconds (Meta's recommended max GOP for
+    // server-side transcoding). Without this, the concat filter can
+    // produce timestamps that pass ffmpeg validation but fail Meta's
+    // stricter ingest checks.
+    "-r", "30",
+    "-g", "60",
+    "-keyint_min", "60",
+    // Color signaling — Reels expects bt709 (HD standard); without
+    // explicit signaling, ffmpeg leaves it unspecified and Meta
+    // sometimes treats that as an error.
+    "-colorspace", "bt709",
+    "-color_primaries", "bt709",
+    "-color_trc", "bt709",
     "-c:a", "aac",
-    "-b:a", "192k",      // bumped from 128k — narration is the centerpiece
-    "-ar", "44100",      // some Safari builds prefer 44100 over 24000
+    "-b:a", "192k",      // narration is the centerpiece
+    "-ar", "44100",      // Reels requires 44.1kHz or 48kHz
+    "-ac", "2",          // stereo (Reels rejects mono)
     "-movflags", "+faststart",
     "-t", totalDur.toFixed(2),
     videoPath,

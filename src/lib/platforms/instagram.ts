@@ -81,58 +81,54 @@ export async function postToInstagram({
 
   const url = publicMediaUrl(mediaUrl);
 
-  const containerParams = new URLSearchParams({
-    caption,
-    access_token: pageAccessToken,
-  });
+  // Helper: try one media_type variant. Throws on container error or
+  // publish failure. Returns the publish ID + permalink on success.
+  const tryUpload = async (
+    mediaTypeVariant: "REELS" | "VIDEO" | null,
+  ): Promise<{ id: string; permalink?: string }> => {
+    const params = new URLSearchParams({ caption, access_token: pageAccessToken });
+    if (mediaType === "video") {
+      if (mediaTypeVariant) params.set("media_type", mediaTypeVariant);
+      params.set("video_url", url);
+    } else {
+      params.set("image_url", url);
+    }
 
-  if (mediaType === "video") {
-    containerParams.set("media_type", "REELS");
-    containerParams.set("video_url", url);
-  } else {
-    containerParams.set("image_url", url);
-  }
-
-  try {
     const containerRes = await fetch(
       `https://graph.facebook.com/v24.0/${instagramId}/media`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: containerParams,
-      }
+      { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: params },
     );
-
     const containerData = await containerRes.json();
     if (containerData.error) throw new Error(containerData.error.message);
-
     const containerId = containerData.id;
 
-    // Video containers (REELS especially) need server-side processing
-    // BEFORE you can publish them. Calling /media_publish too early
-    // returns "Media ID is not available." Poll the container status
-    // until FINISHED (or timeout). Photos publish instantly so we
-    // skip the wait for image posts.
+    // Poll container status to FINISHED. Surface the full status
+    // string from Meta when ERROR/EXPIRED so the caller can decide
+    // whether to fall back to a different media_type.
     if (mediaType === "video") {
       const MAX_WAIT_MS = 60_000;
       const POLL_MS = 3_000;
       const start = Date.now();
       let lastStatus = "IN_PROGRESS";
+      let lastErrorBody = "";
       while (Date.now() - start < MAX_WAIT_MS) {
         const statusRes = await fetch(
+          // status field returns a human-readable message;
+          // status_code is one of IN_PROGRESS / FINISHED / ERROR / EXPIRED
           `https://graph.facebook.com/v24.0/${containerId}?fields=status_code,status&access_token=${pageAccessToken}`,
         );
         const statusData = await statusRes.json();
-        lastStatus = statusData.status_code || statusData.status || "UNKNOWN";
+        lastStatus = statusData.status_code || "UNKNOWN";
+        lastErrorBody = statusData.status || "";
         if (lastStatus === "FINISHED") break;
         if (lastStatus === "ERROR" || lastStatus === "EXPIRED") {
-          throw new Error(`Container ${lastStatus}: ${statusData.status || "video processing failed"}`);
+          throw new Error(`Container ${lastStatus}: ${lastErrorBody || "video processing failed"}`);
         }
         await new Promise((r) => setTimeout(r, POLL_MS));
       }
       if (lastStatus !== "FINISHED") {
         throw new Error(
-          `Container still ${lastStatus} after ${MAX_WAIT_MS / 1000}s. Reels can take longer for big videos — try the post again from /dashboard/posts.`,
+          `Container still ${lastStatus} after ${MAX_WAIT_MS / 1000}s. Try again from /dashboard/posts.`,
         );
       }
     }
@@ -142,20 +138,16 @@ export async function postToInstagram({
       {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          creation_id: containerId,
-          access_token: pageAccessToken,
-        }),
-      }
+        body: new URLSearchParams({ creation_id: containerId, access_token: pageAccessToken }),
+      },
     );
-
     const publishData = await publishRes.json();
     if (publishData.error) throw new Error(publishData.error.message);
 
     let permalink: string | undefined;
     try {
       const permalinkRes = await fetch(
-        `https://graph.facebook.com/v24.0/${publishData.id}?fields=permalink&access_token=${pageAccessToken}`
+        `https://graph.facebook.com/v24.0/${publishData.id}?fields=permalink&access_token=${pageAccessToken}`,
       );
       const permalinkData = await permalinkRes.json();
       permalink = permalinkData.permalink;
@@ -163,11 +155,52 @@ export async function postToInstagram({
       // Permalink fetch is best-effort.
     }
 
+    return { id: publishData.id, permalink };
+  };
+
+  try {
+    // Retry-with-backoff for transient fetch failures.
+    //
+    // Meta's IG fetcher hits 2207077 ("upload fetch failure") even when
+    // the URL works fine for curl/FB — typically a transient network
+    // hiccup or fetch-queue overload on Meta's side. Two retries with
+    // exponential backoff (5s, 15s) clears most of these.
+    //
+    // Format errors (2207076 etc) WON'T be retried — re-fetching the
+    // same file will hit the same parser and fail identically.
+    //
+    // Note: media_type=VIDEO no longer exists in Meta's IG API as of
+    // 2024 — REELS is the ONLY supported video type. Old fallback to
+    // VIDEO returned "Invalid parameter" so it's been removed.
+    const RETRYABLE_CODES = ["2207077", "2207050"];
+    const RETRY_DELAYS_MS = [5_000, 15_000];
+
+    let result;
+    let lastErr: unknown;
+    for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+      try {
+        result = await tryUpload("REELS");
+        if (attempt > 0) console.log(`[instagram] succeeded on retry ${attempt}`);
+        break;
+      } catch (err) {
+        lastErr = err;
+        const errStr = String(err);
+        const isRetryable = RETRYABLE_CODES.some((c) => errStr.includes(c));
+        if (!isRetryable || attempt === RETRY_DELAYS_MS.length) {
+          throw err;
+        }
+        const wait = RETRY_DELAYS_MS[attempt];
+        console.warn(`[instagram] transient error (${errStr.match(/2207\d+/)?.[0] || "?"}), retry ${attempt + 1}/${RETRY_DELAYS_MS.length} in ${wait / 1000}s`);
+        await new Promise((r) => setTimeout(r, wait));
+      }
+    }
+    if (!result) throw lastErr;
+
     return {
       success: true,
-      id: publishData.id,
-      url: permalink,
-      message: "Posted to Instagram",
+      id: result.id,
+      url: result.permalink,
+      message: "Posted to Instagram as Reel",
     };
   } catch (err) {
     const errMsg = String(err);
