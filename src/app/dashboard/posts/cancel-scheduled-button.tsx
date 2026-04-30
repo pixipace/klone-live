@@ -3,22 +3,28 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, X } from "lucide-react";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 export function CancelScheduledButton({ count }: { count: number }) {
   const [busy, setBusy] = useState(false);
   const [, startTransition] = useTransition();
   const router = useRouter();
+  const confirm = useConfirm();
+  const toast = useToast();
 
   const cancel = async () => {
-    if (
-      !confirm(
-        `Cancel all ${count} scheduled post${count === 1 ? "" : "s"}? They won't go out — but you can re-schedule them later.`
-      )
-    )
-      return;
+    const ok = await confirm({
+      title: `Cancel ${count} scheduled post${count === 1 ? "" : "s"}?`,
+      description: "They won't go out at their scheduled times. You can re-schedule them later from each clip.",
+      destructive: true,
+      confirmLabel: "Cancel posts",
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await fetch("/api/posts/cancel-scheduled", { method: "POST" });
+      toast.success(`${count} post${count === 1 ? "" : "s"} cancelled`);
       startTransition(() => router.refresh());
     } finally {
       setBusy(false);
@@ -29,7 +35,7 @@ export function CancelScheduledButton({ count }: { count: number }) {
     <button
       onClick={cancel}
       disabled={busy}
-      className="ml-auto inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-error/30 text-error hover:bg-error/10 disabled:opacity-50 transition-colors"
+      className="ml-auto inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-error/30 text-error hover:bg-error-soft disabled:opacity-50 transition-colors"
     >
       {busy ? (
         <Loader2 className="w-3 h-3 animate-spin" />

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Calendar, PenSquare, ExternalLink, AlertCircle, Search } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
@@ -332,22 +333,17 @@ export default async function PostsPage({
       </div>
 
       {posts.length === 0 ? (
-        <Card className="text-center py-16">
-          <Calendar className="w-10 h-10 text-muted mx-auto mb-3" />
-          <h3 className="text-base font-medium">
-            {filter === "all" ? "No posts yet" : `No ${filterDef.label.toLowerCase()} posts`}
-          </h3>
-          <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
-            {filter === "all"
-              ? "Create your first post or generate clips that auto-schedule across your platforms."
-              : "Switch filters or create a new post."}
-          </p>
-          <Link href="/dashboard/create" className="inline-block mt-5">
-            <Button size="sm">
-              <PenSquare className="w-4 h-4 mr-2" />
-              Create your first post
-            </Button>
-          </Link>
+        <Card>
+          <EmptyState
+            icon={<Calendar className="w-5 h-5" />}
+            title={filter === "all" ? "No posts yet" : `No ${filterDef.label.toLowerCase()} posts`}
+            description={
+              filter === "all"
+                ? "Create your first post manually, or generate clips that auto-schedule across your connected platforms."
+                : "Switch filters above to see other posts, or create a new one."
+            }
+            action={{ href: "/dashboard/create", label: "Create your first post" }}
+          />
         </Card>
       ) : (
         <div className="space-y-6">

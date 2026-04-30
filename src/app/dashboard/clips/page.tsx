@@ -20,6 +20,8 @@ import {
   Link as LinkIcon,
 } from "lucide-react";
 import { VoiceReferencePanel } from "./voice-reference-panel";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 const PUBLISH_PLATFORMS = [
   { id: "linkedin", name: "LinkedIn", color: "#0077b5" },
@@ -99,6 +101,8 @@ const STATUS_VARIANT: Record<
 };
 
 export default function ClipsPage() {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [url, setUrl] = useState("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [mode, setMode] = useState<"url" | "upload">("url");
@@ -270,8 +274,15 @@ export default function ClipsPage() {
   };
 
   const remove = async (id: string) => {
-    if (!confirm("Delete this job and its clips?")) return;
+    const ok = await confirm({
+      title: "Delete this clip job?",
+      description: "Removes the job, its rendered clips, and any scheduled posts that reference them. This cannot be undone.",
+      destructive: true,
+      confirmLabel: "Delete job",
+    });
+    if (!ok) return;
     await fetch(`/api/clips/${id}`, { method: "DELETE" });
+    toast.success("Job deleted");
     fetchJobs();
   };
 
@@ -279,9 +290,10 @@ export default function ClipsPage() {
     const res = await fetch(`/api/clips/${id}/retry`, { method: "POST" });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      alert(data.error || "Retry failed");
+      toast.error("Retry failed", data.error || "Please try again");
       return;
     }
+    toast.success("Job re-queued");
     fetchJobs();
   };
 

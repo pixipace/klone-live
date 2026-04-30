@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
+import { ToastProvider } from "@/components/ui/toast";
+import { ConfirmProvider } from "@/components/ui/confirm-dialog";
 
 export function DashboardShell({
   children,
@@ -30,23 +32,29 @@ export function DashboardShell({
   }, []);
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Backdrop — mobile only, when nav is open */}
-      {navOpen && (
-        <div
-          onClick={() => setNavOpen(false)}
-          className="fixed inset-0 bg-background/70 backdrop-blur-sm z-40 md:hidden"
-          aria-hidden
-        />
-      )}
+    // Toast + Confirm providers wrap every dashboard route. Toasts replace
+    // the old browser alert() calls; ConfirmProvider replaces window.confirm.
+    <ToastProvider>
+      <ConfirmProvider>
+        <div className="min-h-screen bg-background">
+          {/* Backdrop — mobile only, when nav is open */}
+          {navOpen && (
+            <div
+              onClick={() => setNavOpen(false)}
+              className="fixed inset-0 bg-foreground/40 backdrop-blur-sm z-40 md:hidden"
+              aria-hidden
+            />
+          )}
 
-      <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
+          <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
 
-      <div className="md:ml-[220px]">
-        {impersonationBanner}
-        <Topbar onMenuClick={() => setNavOpen(true)} />
-        <main className="p-4 md:p-6 max-w-6xl">{children}</main>
-      </div>
-    </div>
+          <div className="md:ml-[220px]">
+            {impersonationBanner}
+            <Topbar onMenuClick={() => setNavOpen(true)} />
+            <main className="p-4 md:p-6 max-w-6xl">{children}</main>
+          </div>
+        </div>
+      </ConfirmProvider>
+    </ToastProvider>
   );
 }
