@@ -56,35 +56,41 @@ if STYLE == "classic":
     WORDS_PER_FRAME = 2
     Y_PERCENT = 0.70
 elif STYLE == "yellow":
-    FONT_SIZE = 128
+    # MrBeast/MrWhoseTheBoss-style — kept as-is for users who want
+    # the loud preset. Slightly slimmed (was 128) for less shoutiness.
+    FONT_SIZE = 92
     TEXT_COLOR = (255, 220, 60, 255)
     HIGHLIGHT_COLOR = (255, 220, 60, 255)
-    STROKE_WIDTH = 10
+    STROKE_WIDTH = 7
     STROKE_COLOR = (0, 0, 0, 255)
     USE_BOX = False
     BOX_OPACITY = 0.0
     BOX_PAD_X = 0
     BOX_PAD_Y = 0
     WORDS_PER_FRAME = 1
-    Y_PERCENT = 0.66
-else:  # "bold" (default — premium look)
-    # Premium upgrade (vs old harsh-stroke look):
-    #   - Drop shadow + soft glow instead of 10px black stroke (less "AI"-looking)
-    #   - Subtle dark pill background under text for legibility on busy footage
-    #   - First word of multi-word chunks coloured accent (visual rhythm)
-    #   - Slightly smaller font + tighter spacing (fits more, looks tighter)
-    #   - Position 62% (was 66%) — clears phone UI bottom safe area
-    FONT_SIZE = 104
+    Y_PERCENT = 0.68
+else:  # "bold" (default — professional broadcast caption look)
+    # Refined for documentary/news-style explainers (was 104px which
+    # screamed "TikTok captions"):
+    #   - Font 104 → 68 — broadcast-news scale, fits 5+ words per chunk
+    #     comfortably without shrink-to-fit kicking in
+    #   - Tighter pill padding (32→18 / 18→10) — sits flush with text
+    #   - Bumped position (0.62 → 0.74) so smaller text reads as caption
+    #     instead of floating mid-frame
+    #   - Words-per-frame 1 → 3 — more text per frame at this size feels
+    #     readable and less jumpy
+    #   - Drop shadow + pill bg unchanged (the premium-look basis)
+    FONT_SIZE = 68
     TEXT_COLOR = (255, 255, 255, 255)
     HIGHLIGHT_COLOR = (255, 80, 80, 255)  # Brand accent for first word
     STROKE_WIDTH = 0
     STROKE_COLOR = (0, 0, 0, 255)
-    USE_BOX = True                     # Premium uses a soft dark pill
+    USE_BOX = True
     BOX_OPACITY = 0.55
-    BOX_PAD_X = 32
-    BOX_PAD_Y = 18
-    WORDS_PER_FRAME = 1
-    Y_PERCENT = 0.62
+    BOX_PAD_X = 18
+    BOX_PAD_Y = 10
+    WORDS_PER_FRAME = 3
+    Y_PERCENT = 0.74
 
 
 def load_font(size: int):
@@ -122,15 +128,18 @@ def words_for_frame(words, current_idx):
 
 def shrink_to_fit(text, max_w, base_size):
     """Pick a font size that keeps `text` within max_w. Caps at base_size,
-    floors at 60px so single very-long words still render legibly."""
+    floors at 40px so single very-long words still render legibly. Lower
+    floor than the old 60 so the new broadcast 68px base can shrink for
+    long chunks without immediately giving up."""
     size = base_size
-    while size > 60:
+    floor = 40
+    while size > floor:
         font = load_font(size)
         bbox = font.getbbox(text)
         if (bbox[2] - bbox[0]) <= max_w:
             return font, bbox
-        size -= 6
-    return load_font(60), load_font(60).getbbox(text)
+        size -= 4
+    return load_font(floor), load_font(floor).getbbox(text)
 
 
 def _word_widths(font, words):
@@ -168,7 +177,10 @@ def render_frame(visible, highlight_idx, target_w, target_h,
             pop_scale = 0.85 + (1.05 - 0.85) * (u / 0.6)
         else:
             pop_scale = 1.05 - (1.05 - 1.0) * ((u - 0.6) / 0.4)
-    effective_size = max(60, int(FONT_SIZE * pop_scale))
+    # Floor the pop scale at 80% of base — keeps the bounce visible at
+    # smaller font sizes (was hardcoded 60px which floored too high
+    # for the new 68px broadcast scale, killing the pop animation).
+    effective_size = max(int(FONT_SIZE * 0.85), int(FONT_SIZE * pop_scale))
 
     # Single-word path: text is centered, anchor never shifts mid-word so
     # there's zero horizontal jitter between frames showing the same word.
