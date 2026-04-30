@@ -109,6 +109,23 @@ export function welcomeEmail(name: string) {
   };
 }
 
+export function emailVerificationEmail(name: string, verifyUrl: string) {
+  const greeting = name ? `Hey ${name},` : "Hey,";
+  return {
+    subject: "Verify your Klone email",
+    html: emailShell({
+      preview: "One click to confirm this is your email address.",
+      body: `
+        <p style="margin:0 0 16px 0;font-size:16px;font-weight:600;">${greeting}</p>
+        <p style="margin:0 0 16px 0;">Welcome to Klone! Confirm this is your email address so we can send you scheduled-post notifications, security alerts, and the weekly recap.</p>
+        <p style="margin:0 0 16px 0;color:#666;font-size:14px;">This link expires in 24 hours. If you didn't sign up for Klone, you can safely ignore this email — no account will be created.</p>
+      `,
+      ctaText: "Verify my email",
+      ctaUrl: verifyUrl,
+    }),
+  };
+}
+
 export function passwordResetEmail(name: string, resetUrl: string) {
   const greeting = name ? `Hey ${name},` : "Hey,";
   return {

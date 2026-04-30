@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { createSession } from "@/lib/auth";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { sendEmail } from "@/lib/email";
-import { welcomeEmail } from "@/lib/email-templates";
+import { welcomeEmail, emailVerificationEmail } from "@/lib/email-templates";
 import bcrypt from "bcryptjs";
+
+const APP_URL = process.env.NEXTAUTH_URL || "https://klone.live";
+const VERIFY_TTL_HOURS = 24;
 
 export async function POST(request: NextRequest) {
   try {
@@ -63,14 +67,27 @@ export async function POST(request: NextRequest) {
 
     const passwordHash = await bcrypt.hash(password, 12);
 
+    // Issue a single-use verification token. Stored on the User row
+    // (not a separate table) — simpler since each user has at most one
+    // pending verification at a time and we only ever look it up by
+    // token from the email link.
+    const verifyToken = crypto.randomBytes(32).toString("hex");
+    const verifyTokenExpires = new Date(Date.now() + VERIFY_TTL_HOURS * 60 * 60 * 1000);
+
     const user = await prisma.user.create({
       data: {
         name: name || normalizedEmail.split("@")[0],
         email: normalizedEmail,
         passwordHash,
+        emailVerifyToken: verifyToken,
+        emailVerifyTokenExpires: verifyTokenExpires,
       },
     });
 
+    // Create the session right away so the new user lands in the
+    // dashboard. Sensitive ops (post publishing, account connect) can
+    // gate on emailVerified later — for now we let them explore + show
+    // an "Verify your email" banner on the dashboard.
     await createSession({
       id: user.id,
       name: user.name || "",
@@ -80,10 +97,17 @@ export async function POST(request: NextRequest) {
       role: user.role,
     });
 
-    // Welcome email (best-effort — failure does not block signup)
+    // Send verification email FIRST (the important one), then welcome.
+    // Both are best-effort — failure doesn't block signup since user can
+    // request a fresh verification link from the dashboard banner.
+    const verifyUrl = `${APP_URL}/api/auth/verify-email?token=${verifyToken}`;
+    const verifyTmpl = emailVerificationEmail(user.name || "", verifyUrl);
+    sendEmail({ to: user.email, subject: verifyTmpl.subject, html: verifyTmpl.html }).catch(
+      (err) => console.warn("[signup] verification email failed:", err),
+    );
     const tmpl = welcomeEmail(user.name || "");
     sendEmail({ to: user.email, subject: tmpl.subject, html: tmpl.html }).catch(
-      (err) => console.warn("[signup] welcome email failed:", err)
+      (err) => console.warn("[signup] welcome email failed:", err),
     );
 
     return NextResponse.json({ success: true, user: { id: user.id, name: user.name, email: user.email } });

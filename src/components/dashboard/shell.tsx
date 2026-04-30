@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { ToastProvider } from "@/components/ui/toast";
 import { ConfirmProvider } from "@/components/ui/confirm-dialog";
+import { EmailVerifyBanner } from "./email-verify-banner";
+import { VerifyResultToast } from "./verify-result-toast";
 
 export function DashboardShell({
   children,
@@ -50,6 +52,13 @@ export function DashboardShell({
 
           <div className="md:ml-[220px]">
             {impersonationBanner}
+            <EmailVerifyBanner />
+            {/* useSearchParams requires Suspense at the page level for
+                static-prerender-safe builds. Dashboard shell is dynamic
+                but the wrapper is harmless and future-proofs. */}
+            <Suspense fallback={null}>
+              <VerifyResultToast />
+            </Suspense>
             <Topbar onMenuClick={() => setNavOpen(true)} />
             <main className="p-4 md:p-6 max-w-6xl">{children}</main>
           </div>

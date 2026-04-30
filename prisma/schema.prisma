@@ -50,6 +50,21 @@ model User {
   /** Verbatim transcript of f5RefAudioPath. F5-TTS needs this for phoneme
     * alignment during cloning. Required if f5RefAudioPath is set. */
   f5RefAudioText  String?
+  /** Email verification — null until the user clicks the link in the
+    * verification email. Sensitive ops (post publish, account connect)
+    * may gate on this once we want to enforce it. Set to now() on
+    * successful click. */
+  emailVerified            DateTime?
+  /** Random hex token (32 bytes) embedded in the verification email
+    * link. Cleared after successful verify or expiry. */
+  emailVerifyToken         String?   @unique
+  /** Token expiry (24h after issuance). After this, user must request
+    * a new email via "Resend verification" button. */
+  emailVerifyTokenExpires  DateTime?
+  /** Last security-sensitive event timestamp — used by the audit-log
+    * worker to detect unusual patterns (multiple resets in an hour,
+    * etc). Null = no recent security events. */
+  lastSecurityEventAt      DateTime?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   socialAccounts      SocialAccount[]
