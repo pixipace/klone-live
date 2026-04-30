@@ -118,11 +118,14 @@ export async function firePost(post: Post): Promise<FireResult> {
   // Cleanup: delete the media file IF this is the last pending post for it.
   // Auto-distribute creates many Post rows pointing to the same clip mp4
   // across multiple days/platforms. We keep the file until they're all done.
-  if (succeeded > 0 && post.mediaUrl?.startsWith("/api/uploads/")) {
+  // ONLY delete on FULL success (POSTED) — if status is PARTIAL we'll
+  // need the file again for retry, and unlinking it strands the user
+  // with "ENOENT" forever instead of letting them recover.
+  if (status === "POSTED" && post.mediaUrl?.startsWith("/api/uploads/")) {
     const stillPending = await prisma.post.count({
       where: {
         mediaUrl: post.mediaUrl,
-        status: { in: ["SCHEDULED", "QUEUED", "POSTING"] },
+        status: { in: ["SCHEDULED", "QUEUED", "POSTING", "PARTIAL", "FAILED"] },
         id: { not: post.id },
       },
     });
