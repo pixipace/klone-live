@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Mic, Upload, Trash2, Check, Loader2, Sparkles } from "lucide-react";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 type State = {
   hasReference: boolean;
@@ -15,6 +17,8 @@ type State = {
  * uses its built-in default narrator voice (passable but flat).
  */
 export function VoiceReferencePanel() {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [state, setState] = useState<State | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -72,11 +76,22 @@ export function VoiceReferencePanel() {
   };
 
   const remove = async () => {
-    if (!confirm("Remove your voice reference? Future explainers will use the F5-TTS default narrator voice.")) return;
+    const ok = await confirm({
+      title: "Remove your voice reference?",
+      description: "Future explainers will use the default narrator voice. You can upload a new reference any time.",
+      destructive: true,
+      confirmLabel: "Remove voice",
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       const res = await fetch("/api/user/voice-reference", { method: "DELETE" });
-      if (res.ok) setState({ hasReference: false, text: "" });
+      if (res.ok) {
+        setState({ hasReference: false, text: "" });
+        toast.success("Voice reference removed");
+      } else {
+        toast.error("Couldn't remove", "Try again in a moment");
+      }
     } finally {
       setBusy(false);
     }

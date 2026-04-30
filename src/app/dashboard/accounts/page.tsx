@@ -325,7 +325,27 @@ function AccountsContent() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-sm">{card.name}</span>
-                      {isConnected && <Badge variant="success">Connected</Badge>}
+                      {isConnected && (() => {
+                        // Token-expiry-aware badge. "Connected" is misleading
+                        // when the token expires today or has already lapsed —
+                        // posts will fail with auth errors. Badge variant
+                        // shifts as the deadline approaches so the user knows
+                        // to reconnect BEFORE their next scheduled post fails.
+                        const expiresAt = (status as { expiresAt?: string | null }).expiresAt;
+                        if (!expiresAt) {
+                          return <Badge variant="success">Connected</Badge>;
+                        }
+                        const daysLeft = Math.floor(
+                          (new Date(expiresAt).getTime() - Date.now()) / 86400000
+                        );
+                        if (daysLeft <= 0) {
+                          return <Badge variant="error">Reconnect now</Badge>;
+                        }
+                        if (daysLeft <= 7) {
+                          return <Badge variant="warning">Expires in {daysLeft}d</Badge>;
+                        }
+                        return <Badge variant="success">Connected</Badge>;
+                      })()}
                     </div>
                     {isConnected && status?.username ? (
                       <div className="text-xs text-muted-foreground mt-0.5 truncate flex items-center gap-1.5 flex-wrap">

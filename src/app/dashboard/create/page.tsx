@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Card, CardTitle } from "@/components/ui/card";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { PLATFORMS, PlatformId } from "@/lib/constants";
 import {
@@ -30,6 +32,8 @@ const platformIcons: Record<string, string> = {
 };
 
 export default function CreatePostPage() {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [caption, setCaption] = useState("");
   const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformId[]>([]);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
@@ -227,6 +231,28 @@ export default function CreatePostPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Client-side gates BEFORE the upload starts — friendlier than
+    // letting the server reject and showing a JS error string. Limits
+    // here mirror the backend's: 100MB max, MP4/MOV/JPG/PNG/WEBP only.
+    const MAX_SIZE = 100 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      toast.error(
+        "File too large",
+        `${(file.size / 1024 / 1024).toFixed(1)} MB exceeds the 100 MB limit. Compress or trim before uploading.`,
+      );
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    const allowedTypes = ["video/mp4", "video/quicktime", "image/jpeg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error(
+        "Unsupported file type",
+        `${file.type || "Unknown type"} isn't supported. Use MP4, MOV, JPG, PNG, or WebP.`,
+      );
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
     setUploading(true);
     setPostResult(null);
 
@@ -241,19 +267,29 @@ export default function CreatePostPage() {
 
       const data = await response.json();
 
-      if (data.error) {
-        throw new Error(data.error);
+      if (!response.ok || data.error) {
+        // Translate common backend errors to plain English. The server
+        // returns descriptive messages — pass them through verbatim if
+        // they look human, fall back to generic if they look like a stack.
+        const raw = data.error || `HTTP ${response.status}`;
+        const userMsg = /^[A-Z]/.test(raw) && raw.length < 200 ? raw : "Server rejected the upload";
+        toast.error("Upload failed", userMsg);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
       }
 
       setMediaUrl(data.url);
       setMediaName(file.name);
       setMediaType(file.type.startsWith("video/") ? "video" : "image");
+      toast.success(`${file.name} uploaded`);
     } catch (err) {
+      // Network/parse failure — distinguish from server-rejection above.
       console.error("Upload error:", err);
-      setPostResult({
-        success: false,
-        message: `Upload failed: ${err}`,
-      });
+      toast.error(
+        "Upload failed",
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+      if (fileInputRef.current) fileInputRef.current.value = "";
     } finally {
       setUploading(false);
     }
@@ -406,7 +442,17 @@ export default function CreatePostPage() {
     }
   };
 
-  const removeMedia = () => {
+  const removeMedia = async () => {
+    // Always confirm — re-uploading is a real cost (network + processing)
+    // and the trash icon is right next to the file name where a misclick
+    // is plausible. Skip the confirm only when nothing's attached.
+    if (!mediaUrl) return;
+    const ok = await confirm({
+      title: "Remove uploaded media?",
+      description: "You'll need to re-upload if you change your mind.",
+      confirmLabel: "Remove",
+    });
+    if (!ok) return;
     setMediaUrl(null);
     setMediaType(null);
     setMediaName("");
@@ -548,6 +594,18 @@ export default function CreatePostPage() {
               </CardTitle>
               <span className="text-[11px] text-muted">Powered by Gemma (local)</span>
             </div>
+            {/* Inline gating hint — every AI button needs a topic + platform.
+                Showing the requirement here is much clearer than five greyed
+                buttons with no explanation. Disappears when both are met. */}
+            {(selectedPlatforms.length === 0 || !aiTopic.trim()) && (
+              <div className="mb-3 px-3 py-2 rounded-md bg-foreground/5 border border-border text-[11px] text-muted-foreground">
+                {selectedPlatforms.length === 0 && !aiTopic.trim()
+                  ? "Pick a platform above and enter a topic below to use AI."
+                  : selectedPlatforms.length === 0
+                  ? "Pick a platform above to use AI."
+                  : "Enter a topic below to use AI."}
+              </div>
+            )}
             <div className="space-y-3">
               <div className="flex gap-2">
                 <input

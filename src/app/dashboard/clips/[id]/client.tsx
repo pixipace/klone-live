@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, ExternalLink, Flame, Clock, Send, Sparkles, Check, Pencil, Save, X, RotateCcw, Zap, Loader2, RefreshCcw, Scissors } from "lucide-react";
 import { ShareButton } from "./share-button";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 export type ClipPostRecord = {
   id: string;
@@ -60,6 +62,8 @@ function ClipPostStatus({
   posts: ClipPostRecord[];
   onDelete: (postId: string) => void;
 }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [busyId, setBusyId] = useState<string | null>(null);
 
   if (posts.length === 0) {
@@ -100,20 +104,22 @@ function ClipPostStatus({
 
   const handleDelete = async (post: ClipPostRecord) => {
     if (post.status === "POSTING") return;
-    if (
-      !confirm(
-        `Remove this post record from Klone?\n\nThis only deletes our copy + local file — the post on ${post.platforms.join(", ") || "the platform"} stays up. Take it down on the platform itself if you want it gone there too.`,
-      )
-    )
-      return;
+    const ok = await confirm({
+      title: "Remove this post record?",
+      description: `This only deletes our copy + local file — the live post on ${post.platforms.join(", ") || "the platform"} stays up. Take it down on the platform itself if you want it gone there too.`,
+      destructive: true,
+      confirmLabel: "Remove record",
+    });
+    if (!ok) return;
     setBusyId(post.id);
     try {
       const res = await fetch(`/api/posts/${post.id}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        alert(data.error || "Failed to delete");
+        toast.error("Couldn't delete", data.error || "Try again in a moment");
         return;
       }
+      toast.success("Post record removed");
       onDelete(post.id);
     } finally {
       setBusyId(null);
@@ -504,17 +510,32 @@ function AutoDistributePanel({
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ scheduled: number; firstAt: string; lastAt: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Connected-platforms set — used to gate the picker so users can't
+  // select a platform that isn't OAuth'd. Without this, distribute
+  // schedules posts that fail at fire time with "no auth" errors.
+  const [connectedSet, setConnectedSet] = useState<Set<string> | null>(null);
 
   // Pre-fill from saved publishing preferences (set on /dashboard/clips
   // first screen). Falls back to defaults if user hasn't saved any.
+  // Also prune any pre-filled platforms the user has since disconnected.
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/user/clipper-prefs")
-      .then((r) => r.json())
-      .then((d) => {
+    Promise.all([
+      fetch("/api/user/clipper-prefs").then((r) => r.json()),
+      fetch("/api/accounts/connected").then((r) => r.json()).catch(() => ({ connected: [] })),
+    ])
+      .then(([d, c]) => {
         if (cancelled) return;
+        const connected = new Set<string>(Array.isArray(c.connected) ? c.connected : []);
+        setConnectedSet(connected);
         if (Array.isArray(d.platforms) && d.platforms.length > 0) {
-          setSelectedPlatforms(new Set(d.platforms));
+          // Only pre-select platforms still connected — defensively
+          // avoid pre-selecting a doomed-to-fail option.
+          setSelectedPlatforms(new Set((d.platforms as string[]).filter((p) => connected.has(p))));
+        } else if (connected.size > 0) {
+          // No saved prefs — pre-select the first connected platform
+          // so users can hit Submit immediately if they want.
+          setSelectedPlatforms(new Set([Array.from(connected)[0]]));
         }
         if (typeof d.clipsPerDay === "number") setClipsPerDay(d.clipsPerDay);
         if (typeof d.skipWeekends === "boolean") setSkipWeekends(d.skipWeekends);
@@ -620,14 +641,24 @@ function AutoDistributePanel({
             <div className="flex flex-wrap gap-2">
               {PLATFORMS.map((p) => {
                 const active = selectedPlatforms.has(p.id);
+                // null = still loading — treat as enabled to avoid layout flash
+                const isConnected = connectedSet === null || connectedSet.has(p.id);
                 return (
                   <button
                     key={p.id}
-                    onClick={() => togglePlatform(p.id)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs transition-all ${
-                      active
-                        ? "border-accent bg-accent/10 text-foreground"
-                        : "border-border bg-card text-muted-foreground"
+                    onClick={() => isConnected && togglePlatform(p.id)}
+                    disabled={!isConnected}
+                    title={
+                      isConnected
+                        ? undefined
+                        : `Connect ${p.name} in /dashboard/accounts to schedule posts here`
+                    }
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md border text-xs transition-all ${
+                      !isConnected
+                        ? "border-border bg-card/50 text-muted opacity-50 cursor-not-allowed"
+                        : active
+                        ? "border-foreground bg-foreground/5 text-foreground"
+                        : "border-border bg-card text-foreground-secondary hover:border-border-hover"
                     }`}
                   >
                     <div
@@ -637,13 +668,22 @@ function AutoDistributePanel({
                       {p.name[0]}
                     </div>
                     {p.name}
+                    {!isConnected && (
+                      <span className="text-[9px] text-muted">not connected</span>
+                    )}
                   </button>
                 );
               })}
             </div>
-            <p className="text-[11px] text-muted mt-2">
-              You must have these accounts connected.
-            </p>
+            {connectedSet !== null && connectedSet.size === 0 && (
+              <p className="text-[11px] text-error mt-2">
+                You haven't connected any accounts yet.{" "}
+                <Link href="/dashboard/accounts" className="underline">
+                  Connect at least one
+                </Link>{" "}
+                to schedule posts.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -753,6 +793,8 @@ function AutoDistributePanel({
 
 export function ClipDetailClient({ job }: { job: JobDetail }) {
   const router = useRouter();
+  const confirm = useConfirm();
+  const toast = useToast();
   const [titles, setTitles] = useState<Record<string, string>>(() =>
     Object.fromEntries(job.clips.map((c) => [c.id, c.hookTitle]))
   );
@@ -777,16 +819,25 @@ export function ClipDetailClient({ job }: { job: JobDetail }) {
   const [repickErr, setRepickErr] = useState<string | null>(null);
 
   const repick = async () => {
-    if (!confirm("Re-pick clips? Current clips will be deleted and Gemma will pick new moments.")) return;
+    const ok = await confirm({
+      title: "Re-pick clips?",
+      description: "Current clips will be deleted and Gemma will pick new moments from the cached transcript. Takes ~30s — much faster than the original run because the source download + Whisper pass is reused.",
+      destructive: true,
+      confirmLabel: "Re-pick",
+    });
+    if (!ok) return;
     setRepicking(true);
     setRepickErr(null);
     try {
       const res = await fetch(`/api/clips/${job.id}/repick`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Re-pick failed");
+      toast.success("Re-pick queued — generating new clips");
       router.push("/dashboard/clips");
     } catch (err) {
-      setRepickErr(String(err instanceof Error ? err.message : err));
+      const msg = String(err instanceof Error ? err.message : err);
+      setRepickErr(msg);
+      toast.error("Re-pick failed", msg);
     } finally {
       setRepicking(false);
     }
