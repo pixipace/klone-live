@@ -26,6 +26,18 @@ const PAGE_SIZE = 50;
 
 const FETCHABLE_PLATFORMS = new Set(["youtube", "instagram"]);
 
+// Brand colors for the platform pills — matches the dot pattern used
+// elsewhere in the dashboard (homepage, accounts page) so a green
+// "live" pill instantly tells the user which platform it represents
+// without needing to read the label.
+const PLATFORM_BRAND_COLORS: Record<string, string> = {
+  tiktok: "#00f2ea",
+  instagram: "#e4405f",
+  facebook: "#1877f2",
+  youtube: "#ff0000",
+  linkedin: "#0077b5",
+};
+
 export const dynamic = "force-dynamic";
 
 const FILTERS = [
@@ -435,14 +447,21 @@ export default async function PostsPage({
                                 {platforms.map((p) => {
                                   const link = linkByPlatform.get(p);
                                   if (link?.url) {
+                                    // Live post pill — branded color dot
+                                    // for instant platform recognition.
                                     return (
                                       <a
                                         key={p}
                                         href={link.url}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="text-[10px] px-1.5 py-0.5 rounded bg-success/10 text-success inline-flex items-center gap-1 hover:bg-success/15 transition-colors"
+                                        title={`View live ${p} post`}
+                                        className="text-[10px] px-1.5 py-0.5 rounded bg-success-soft text-success inline-flex items-center gap-1 hover:bg-success/15 transition-colors font-medium"
                                       >
+                                        <span
+                                          className="w-1.5 h-1.5 rounded-full"
+                                          style={{ backgroundColor: PLATFORM_BRAND_COLORS[p] || "currentColor" }}
+                                        />
                                         {p}
                                         <ExternalLink className="w-2 h-2" />
                                       </a>

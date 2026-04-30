@@ -65,6 +65,17 @@ model User {
     * worker to detect unusual patterns (multiple resets in an hour,
     * etc). Null = no recent security events. */
   lastSecurityEventAt      DateTime?
+  /** Most recent login fingerprint — SHA-256(userAgent) truncated.
+    * On the next login, if the new fingerprint differs we send a
+    * "new sign-in" alert email. First login on a fresh account also
+    * triggers an alert (lastLoginUaHash starts null). */
+  lastLoginUaHash          String?
+  /** IP of last successful login — surfaced in the alert email so
+    * the user can spot impossible-travel attacks ("San Francisco one
+    * hour, Bangalore the next"). Stored opportunistically; null when
+    * IP couldn't be determined. */
+  lastLoginIp              String?
+  lastLoginAt              DateTime?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   socialAccounts      SocialAccount[]

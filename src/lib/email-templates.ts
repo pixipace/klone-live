@@ -126,6 +126,43 @@ export function emailVerificationEmail(name: string, verifyUrl: string) {
   };
 }
 
+export function newSignInEmail(opts: {
+  name: string;
+  device: string;       // e.g. "Chrome on macOS"
+  location: string;     // e.g. "San Francisco, US" or "Unknown location"
+  ip: string;           // raw IP for the technical line
+  at: Date;             // timestamp
+}) {
+  const greeting = opts.name ? `Hey ${opts.name},` : "Hey,";
+  const when = opts.at.toLocaleString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+  return {
+    subject: "New sign-in to your Klone account",
+    html: emailShell({
+      preview: `${opts.device} · ${opts.location}`,
+      body: `
+        <p style="margin:0 0 16px 0;font-size:16px;font-weight:600;">${greeting}</p>
+        <p style="margin:0 0 16px 0;">A new device just signed into your Klone account. If this was you, no action needed.</p>
+        <div style="margin:0 0 20px 0;padding:14px 16px;background:#f8f8f8;border-radius:8px;font-size:14px;line-height:1.5;">
+          <p style="margin:0 0 4px 0;"><strong>Device:</strong> ${escape(opts.device)}</p>
+          <p style="margin:0 0 4px 0;"><strong>Location:</strong> ${escape(opts.location)}</p>
+          <p style="margin:0 0 4px 0;"><strong>IP:</strong> <code style="font-size:13px;">${escape(opts.ip)}</code></p>
+          <p style="margin:0;"><strong>When:</strong> ${escape(when)}</p>
+        </div>
+        <p style="margin:0 0 16px 0;color:#c14545;font-size:14px;"><strong>Wasn't you?</strong> Change your password immediately and review your connected social accounts.</p>
+      `,
+      ctaText: "Open Klone",
+      ctaUrl: `${APP_URL}/dashboard/settings`,
+    }),
+  };
+}
+
 export function passwordResetEmail(name: string, resetUrl: string) {
   const greeting = name ? `Hey ${name},` : "Hey,";
   return {

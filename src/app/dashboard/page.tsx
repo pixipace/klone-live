@@ -11,6 +11,7 @@ import {
   AlertCircle,
   Sparkles,
   ExternalLink,
+  Users,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
@@ -167,70 +168,94 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      {!onboardingDone && (
-        <div className="relative overflow-hidden rounded-lg border border-accent/30 bg-accent-soft p-6">
-          <div className="relative">
-            <div className="flex items-center justify-between mb-2 gap-3">
+      {!onboardingDone && (() => {
+        // Compute the "current" step — the first not-done one. That
+        // step gets the highlighted styling + always-visible CTA so
+        // a new user has zero ambiguity about what to click next.
+        const steps = [
+          {
+            n: 1,
+            done: onboarding.connectedAccount,
+            title: "Connect a social account",
+            desc: "OAuth into TikTok, Instagram, Facebook, YouTube, or LinkedIn. ~30 seconds. Tokens are encrypted at rest.",
+            href: "/dashboard/accounts",
+            cta: "Connect accounts",
+            icon: Users,
+          },
+          {
+            n: 2,
+            done: onboarding.generatedClip,
+            title: "Generate your first video",
+            desc: "Paste a YouTube URL. Clip Studio extracts viral moments from your own talks; Explainer Studio narrates AI commentary over silent clips of any source (copyright-safe).",
+            href: "/dashboard/clips",
+            cta: "Open Clip Studio",
+            icon: Scissors,
+          },
+          {
+            n: 3,
+            done: onboarding.publishedPost,
+            title: "Schedule + post",
+            desc: "Auto-distribute across platforms at each one's best time, or post a single clip on demand.",
+            href: "/dashboard/create",
+            cta: "Compose post",
+            icon: Send,
+          },
+        ];
+        const currentStepIdx = steps.findIndex((s) => !s.done);
+        return (
+          <div className="relative overflow-hidden rounded-xl border border-border bg-card p-6 md:p-7 shadow-sm">
+            <div className="flex items-center justify-between mb-4 gap-3">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-accent" />
-                <span className="text-xs font-medium text-accent uppercase tracking-wider">
+                <span className="text-xs font-semibold text-accent uppercase tracking-wider">
                   {onboardingComplete === 0
                     ? "Welcome to Klone"
-                    : `Getting started · ${onboardingComplete}/3 done`}
+                    : `${onboardingComplete}/3 done`}
                 </span>
               </div>
-              <div className="hidden sm:flex items-center gap-1">
+              <div className="flex items-center gap-1">
                 {[0, 1, 2].map((i) => (
                   <div
                     key={i}
-                    className={`h-1 w-8 rounded-full ${
-                      i < onboardingComplete ? "bg-accent" : "bg-border"
+                    className={`h-1.5 w-8 rounded-full transition-colors ${
+                      i < onboardingComplete
+                        ? "bg-accent"
+                        : i === onboardingComplete
+                        ? "bg-accent/40"
+                        : "bg-border"
                     }`}
                   />
                 ))}
               </div>
             </div>
-            <h3 className="text-lg font-semibold mb-1">
+            <h3 className="text-2xl font-semibold tracking-tight mb-1">
               {onboardingComplete === 0
-                ? "Three steps to your first viral clip"
-                : onboardingComplete === 3
-                  ? "You're all set"
-                  : "Keep going — almost there"}
+                ? "First clip in ~10 minutes"
+                : "Keep going — almost there"}
             </h3>
-            <p className="text-sm text-muted-foreground mb-5">
+            <p className="text-sm text-muted-foreground mb-6 max-w-lg">
               {onboardingComplete === 0
-                ? "Get to your first AI-cut social clip in ~10 minutes."
-                : `${3 - onboardingComplete} step${3 - onboardingComplete === 1 ? "" : "s"} left.`}
+                ? "Three quick steps. Every one is reversible — connections can be disconnected, clips can be deleted, scheduled posts can be cancelled."
+                : `Just ${3 - onboardingComplete} more step${3 - onboardingComplete === 1 ? "" : "s"} until your first post lands.`}
             </p>
-            <div className="space-y-3">
-              <Step
-                num={1}
-                title="Connect a social account"
-                desc="Link LinkedIn (active), Instagram, or Facebook so we can post on your behalf."
-                href="/dashboard/accounts"
-                cta="Connect →"
-                done={onboarding.connectedAccount}
-              />
-              <Step
-                num={2}
-                title="Generate your first video"
-                desc="Two options: Clip Studio extracts viral moments from your own podcasts/talks. Explainer Studio narrates AI commentary over silent clips of any source — copyright-safe."
-                href="/dashboard/clips"
-                cta="Open Clip Studio →"
-                done={onboarding.generatedClip}
-              />
-              <Step
-                num={3}
-                title="Schedule + post"
-                desc="Send a clip to Compose → pick platforms → post now or schedule for later."
-                href="/dashboard/create"
-                cta="Compose →"
-                done={onboarding.publishedPost}
-              />
+            <div className="space-y-2.5">
+              {steps.map((s, i) => (
+                <Step
+                  key={s.n}
+                  num={s.n}
+                  title={s.title}
+                  desc={s.desc}
+                  href={s.href}
+                  cta={s.cta}
+                  done={s.done}
+                  icon={s.icon}
+                  isCurrent={i === currentStepIdx}
+                />
+              ))}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Stat grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -397,6 +422,8 @@ function Step({
   href,
   cta,
   done,
+  icon: Icon,
+  isCurrent,
 }: {
   num: number;
   title: string;
@@ -404,31 +431,55 @@ function Step({
   href: string;
   cta: string;
   done?: boolean;
+  icon?: React.ElementType;
+  /** True when this is the next-to-do step. Highlights the row and
+   *  always shows the CTA (vs hover-only for non-current steps). */
+  isCurrent?: boolean;
 }) {
   return (
     <Link
       href={href}
-      className={`flex items-start gap-4 p-3 rounded-lg hover:bg-accent/5 transition-colors group ${
-        done ? "opacity-60" : ""
+      className={`flex items-start gap-4 p-3 rounded-lg transition-all group ${
+        done
+          ? "opacity-60 hover:opacity-100"
+          : isCurrent
+          ? "bg-accent-soft border border-accent/20 hover:border-accent/40"
+          : "hover:bg-card-hover border border-transparent"
       }`}
     >
       <div
-        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0 ${
+        className={`w-9 h-9 rounded-md flex items-center justify-center text-sm font-semibold flex-shrink-0 ${
           done
-            ? "bg-success/15 text-success"
-            : "bg-accent/15 text-accent"
+            ? "bg-success-soft text-success"
+            : isCurrent
+            ? "bg-foreground text-background"
+            : "bg-foreground/5 text-foreground"
         }`}
       >
-        {done ? <CheckCircle2 className="w-4 h-4" /> : num}
+        {done ? (
+          <CheckCircle2 className="w-4.5 h-4.5" />
+        ) : Icon ? (
+          <Icon className="w-4 h-4" />
+        ) : (
+          num
+        )}
       </div>
       <div className="flex-1 min-w-0">
-        <h4 className={`text-sm font-medium ${done ? "line-through text-muted-foreground" : ""}`}>
+        <h4 className={`text-sm font-semibold tracking-tight ${done ? "line-through text-muted-foreground" : ""}`}>
           {title}
         </h4>
-        <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{desc}</p>
       </div>
-      <span className="text-xs text-accent self-center opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-        {done ? "Done" : cta}
+      <span
+        className={`text-xs font-medium self-center whitespace-nowrap transition-opacity ${
+          done
+            ? "text-muted opacity-0 group-hover:opacity-100"
+            : isCurrent
+            ? "text-accent"
+            : "text-foreground-secondary opacity-0 group-hover:opacity-100"
+        }`}
+      >
+        {done ? "Done ✓" : `${cta} →`}
       </span>
     </Link>
   );

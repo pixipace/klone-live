@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { sendEmail, emailShell } from "@/lib/email";
+
+const APP_URL = process.env.NEXTAUTH_URL || "https://klone.live";
 
 export async function POST(request: NextRequest) {
   const { token, password } = (await request.json()) as {
@@ -39,10 +42,20 @@ export async function POST(request: NextRequest) {
 
   const passwordHash = await bcrypt.hash(password, 12);
 
+  // Capture user info for the post-reset alert email BEFORE the
+  // password hash changes (we need the email + name).
+  const targetUser = await prisma.user.findUnique({
+    where: { id: record.userId },
+    select: { email: true, name: true },
+  });
+
   await prisma.$transaction([
     prisma.user.update({
       where: { id: record.userId },
-      data: { passwordHash },
+      data: {
+        passwordHash,
+        lastSecurityEventAt: new Date(),
+      },
     }),
     prisma.passwordResetToken.update({
       where: { id: record.id },
@@ -58,6 +71,38 @@ export async function POST(request: NextRequest) {
       data: { usedAt: new Date() },
     }),
   ]);
+
+  // CONFIRMATION email — best-effort, doesn't block the response.
+  // Standard security practice: alert the user any time the password
+  // changes, so an attacker who reset the password CAN'T do it
+  // silently. Even if attacker took over the email too, this is
+  // deliberately redundant defense.
+  if (targetUser) {
+    const greeting = targetUser.name ? `Hey ${targetUser.name},` : "Hey,";
+    const when = new Date().toLocaleString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    });
+    const html = emailShell({
+      preview: "Your Klone password was just changed.",
+      body: `
+        <p style="margin:0 0 16px 0;font-size:16px;font-weight:600;">${greeting}</p>
+        <p style="margin:0 0 16px 0;">Your Klone password was just changed at <strong>${when}</strong>.</p>
+        <p style="margin:0 0 16px 0;color:#c14545;font-size:14px;"><strong>Wasn't you?</strong> Reset it again immediately and review your connected social accounts. Reply to this email if you need help.</p>
+      `,
+      ctaText: "Open Klone",
+      ctaUrl: `${APP_URL}/dashboard/settings`,
+    });
+    sendEmail({
+      to: targetUser.email,
+      subject: "Your Klone password was changed",
+      html,
+    }).catch((err) => console.warn("[reset] confirmation email failed:", err));
+  }
 
   return NextResponse.json({ success: true });
 }
