@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Scissors,
   Loader2,
@@ -852,12 +853,28 @@ export default function ClipsPage() {
           Recent jobs
         </h2>
         {loading ? (
-          <Card className="p-6 text-center text-sm text-muted-foreground">
-            Loading…
-          </Card>
+          // Skeleton row matches the actual job-card layout (height,
+          // border, padding) so the page doesn't jump when data arrives.
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <Card key={i} className="p-4 animate-pulse">
+                <div className="flex items-start gap-4">
+                  <div className="w-16 h-9 bg-foreground/8 rounded shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 w-1/2 bg-foreground/8 rounded" />
+                    <div className="h-2 w-3/4 bg-foreground/8 rounded" />
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
         ) : jobs.length === 0 ? (
-          <Card className="p-6 text-center text-sm text-muted-foreground">
-            No jobs yet. Paste a URL above to get started.
+          <Card>
+            <EmptyState
+              icon={<Scissors className="w-5 h-5" />}
+              title="No clip jobs yet"
+              description="Paste a YouTube URL above and Klone extracts the most viral 30-60s moments — face-tracked, captioned, scored. Or try Explainer Studio for AI-narrated explainers from any source."
+            />
           </Card>
         ) : (
           jobs.map((job) => {

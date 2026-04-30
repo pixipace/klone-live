@@ -874,8 +874,12 @@ export default function CreatePostPage() {
                 <input
                   type="date"
                   value={scheduleDate}
+                  // min=today prevents picking yesterday from the date
+                  // picker UI directly; the typed-in fallback is caught
+                  // by the live "in past" warning below.
+                  min={new Date().toISOString().slice(0, 10)}
                   onChange={(e) => setScheduleDate(e.target.value)}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent/50"
+                  className="w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-foreground hover:border-border-hover focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent transition-all"
                 />
               </div>
               <div className="flex-1">
@@ -886,10 +890,27 @@ export default function CreatePostPage() {
                   type="time"
                   value={scheduleTime}
                   onChange={(e) => setScheduleTime(e.target.value)}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent/50"
+                  className="w-full bg-surface border border-border rounded-md px-3 py-2 text-sm text-foreground hover:border-border-hover focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent transition-all"
                 />
               </div>
             </div>
+            {/* Real-time validation — typing a past time silently
+                blocked the post before. Now they see it the moment
+                they pick. Also shows the resolved local datetime so
+                user has clear confirmation of what was scheduled. */}
+            {(() => {
+              if (!scheduleDate || !scheduleTime) return null;
+              const t = new Date(`${scheduleDate}T${scheduleTime}`);
+              if (Number.isNaN(t.getTime())) return null;
+              const inPast = t.getTime() <= Date.now();
+              return (
+                <p className={`text-[11px] mt-2 ${inPast ? "text-error" : "text-muted-foreground"}`}>
+                  {inPast
+                    ? "⚠ That time is in the past. Pick a future moment."
+                    : `Will publish ${t.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`}
+                </p>
+              );
+            })()}
           </Card>
         </div>
 

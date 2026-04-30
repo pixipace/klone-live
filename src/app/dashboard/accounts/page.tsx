@@ -157,7 +157,29 @@ const PLATFORM_CARDS: PlatformCard[] = [
 
 export default function AccountsPage() {
   return (
-    <Suspense fallback={<div className="text-muted-foreground">Loading...</div>}>
+    <Suspense
+      fallback={
+        // Skeleton mirrors the actual cards layout so the UI doesn't jump
+        // when accounts data resolves. 5 cards × 88px ≈ the real height.
+        <div className="space-y-6">
+          <div className="h-4 w-2/3 max-w-md bg-foreground/8 rounded animate-pulse" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div
+                key={i}
+                className="bg-card border border-border rounded-lg p-6 flex items-center gap-4 animate-pulse"
+              >
+                <div className="w-12 h-12 rounded-xl bg-foreground/8 shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 w-1/2 bg-foreground/8 rounded" />
+                  <div className="h-2 w-3/4 bg-foreground/8 rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      }
+    >
       <AccountsContent />
     </Suspense>
   );

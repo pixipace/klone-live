@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { LogOut, Loader2 } from "lucide-react";
+import { useToast } from "@/components/ui/toast";
 
 export function ExitImpersonationButton() {
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
 
   const exit = async () => {
@@ -16,11 +18,11 @@ export function ExitImpersonationButton() {
       if (res.ok) {
         window.location.href = data.redirectTo || "/control-room";
       } else {
-        alert(data.error || "Failed to exit impersonation");
+        toast.error("Couldn't exit impersonation", data.error || "Try again");
         setBusy(false);
       }
     } catch (err) {
-      alert(String(err).slice(0, 200));
+      toast.error("Couldn't exit impersonation", String(err).slice(0, 200));
       setBusy(false);
     }
   };

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Trash2, ScrollText, RefreshCcw } from "lucide-react";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 const CACHE_TARGETS = [
   { id: "source", label: "YouTube source cache (.uploads/source-cache)" },
@@ -11,11 +13,21 @@ const CACHE_TARGETS = [
 ] as const;
 
 export function CacheControls() {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
 
   const clear = async (target: string) => {
-    if (!confirm(`Clear ${target} cache? Source cache rebuilds on next download.`)) return;
+    const ok = await confirm({
+      title: `Clear ${target} cache?`,
+      description: target === "all"
+        ? "Wipes source video cache, B-roll image cache, and the clipper work directory. Source caches rebuild on next download (slower first job)."
+        : "Source caches rebuild on next download. No clip data is lost.",
+      destructive: true,
+      confirmLabel: "Clear cache",
+    });
+    if (!ok) return;
     setBusy(target);
     setResult(null);
     try {
@@ -25,6 +37,11 @@ export function CacheControls() {
         body: JSON.stringify({ target }),
       });
       const data = await res.json();
+      if (data.error) {
+        toast.error("Cache clear failed", data.error);
+      } else {
+        toast.success(`Cleared ${target} cache`);
+      }
       setResult(data.results || { error: data.error });
     } finally {
       setBusy(null);

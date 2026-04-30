@@ -5,6 +5,7 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   MessageCircle,
   Reply,
@@ -107,13 +108,11 @@ export default function CommentsPage() {
         </Card>
       ) : data.comments.length === 0 ? (
         <Card>
-          <div className="text-center py-12">
-            <MessageCircle className="w-12 h-12 text-muted mx-auto mb-4" />
-            <h3 className="text-lg font-medium">No comments yet</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Comments on your Instagram posts will appear here.
-            </p>
-          </div>
+          <EmptyState
+            icon={<MessageCircle className="w-5 h-5" />}
+            title="No comments yet"
+            description="When viewers comment on your Instagram posts, they'll appear here so you can reply without leaving Klone."
+          />
         </Card>
       ) : (
         <div className="space-y-3">

@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
+import { ToastProvider } from "@/components/ui/toast";
+import { ConfirmProvider } from "@/components/ui/confirm-dialog";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false, nocache: true },
@@ -25,6 +27,12 @@ export default async function AdminLayout({
   if (!session) redirect("/dashboard");
 
   return (
+    // Toast + Confirm providers wrap the control-room so admin actions
+    // (impersonate, delete, ban, cache clear) get the same proper-modal
+    // + toast feedback as the rest of the app instead of raw browser
+    // alert/confirm dialogs.
+    <ToastProvider>
+      <ConfirmProvider>
     <div className="min-h-screen bg-background">
       <div className="border-b border-border bg-card/40 backdrop-blur">
         <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
@@ -52,6 +60,8 @@ export default async function AdminLayout({
       </div>
       <div className="max-w-7xl mx-auto px-6 py-8">{children}</div>
     </div>
+      </ConfirmProvider>
+    </ToastProvider>
   );
 }
 

@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Loader2, Save, Settings } from "lucide-react";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 const FEATURE_LIST: Array<{ key: string; label: string; defaultOn: boolean }> = [
   { key: "clipper", label: "Clipper (Clip Studio)", defaultOn: true },
@@ -28,6 +30,8 @@ export function UserActions({
   };
 }) {
   const router = useRouter();
+  const confirm = useConfirm();
+  const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
 
   const callAction = async (action: string, body?: Record<string, unknown>) => {
@@ -40,8 +44,9 @@ export function UserActions({
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || "Action failed");
+        toast.error(`${action} failed`, data.error || "Try again in a moment");
       } else {
+        toast.success(`${action} applied`);
         router.refresh();
       }
     } finally {
@@ -50,22 +55,25 @@ export function UserActions({
   };
 
   const deleteUser = async () => {
-    if (
-      !confirm(
-        `Permanently delete ${user.email}? Cascades all their posts, clips, social accounts.`
-      )
-    )
-      return;
+    const ok = await confirm({
+      title: `Permanently delete ${user.email}?`,
+      description:
+        "Cascades EVERY record this user owns: social accounts (with stored OAuth tokens), all posts (history + scheduled), all clip jobs and rendered videos, all post-publish results. Cannot be undone — there is no soft-delete.",
+      destructive: true,
+      confirmLabel: "Delete user permanently",
+    });
+    if (!ok) return;
     setBusy("delete");
     try {
       const res = await fetch(`/api/control-room/users/${user.id}`, {
         method: "DELETE",
       });
       if (res.ok) {
+        toast.success(`${user.email} deleted`);
         router.push("/control-room/users");
       } else {
         const data = await res.json();
-        alert(data.error || "Delete failed");
+        toast.error("Delete failed", data.error || "User not removed");
       }
     } finally {
       setBusy(null);
@@ -102,7 +110,13 @@ export function UserActions({
         size="sm"
         variant="outline"
         onClick={async () => {
-          if (!confirm(`Impersonate ${user.email}? You'll be logged in as them; banner lets you exit.`)) return;
+          const ok = await confirm({
+            title: `Impersonate ${user.email}?`,
+            description:
+              "You'll be logged in as them. A banner stays on every page so you can exit. The action is recorded in the audit log.",
+            confirmLabel: "Impersonate",
+          });
+          if (!ok) return;
           setBusy("impersonate");
           try {
             const res = await fetch(`/api/control-room/impersonate/${user.id}`, {
@@ -112,11 +126,11 @@ export function UserActions({
             if (res.ok) {
               window.location.href = data.redirectTo || "/dashboard";
             } else {
-              alert(data.error || "Impersonate failed");
+              toast.error("Impersonate failed", data.error || "Try again");
               setBusy(null);
             }
           } catch (err) {
-            alert(String(err).slice(0, 200));
+            toast.error("Impersonate failed", String(err).slice(0, 200));
             setBusy(null);
           }
         }}
@@ -156,6 +170,7 @@ export function SuperAdminControls({
   };
 }) {
   const router = useRouter();
+  const toast = useToast();
 
   const initialFlags: Record<string, boolean> = (() => {
     if (!user.featureFlags) return {};
@@ -183,8 +198,9 @@ export function SuperAdminControls({
     });
     if (!res.ok) {
       const data = await res.json();
-      alert(data.error || "Failed");
+      toast.error(`${action} failed`, data.error || "Try again");
     } else {
+      toast.success("Saved");
       router.refresh();
     }
   };
@@ -209,7 +225,10 @@ export function SuperAdminControls({
     try {
       const num = maxClips.trim() === "" ? null : parseInt(maxClips, 10);
       if (num !== null && (Number.isNaN(num) || num < 0)) {
-        alert("Max clips must be 0 or higher (or empty for plan default).");
+        toast.error(
+          "Invalid limit",
+          "Max clips must be 0 or higher (or empty for plan default)",
+        );
         return;
       }
       await post("setLimits", { maxClipsPerMonth: num });
