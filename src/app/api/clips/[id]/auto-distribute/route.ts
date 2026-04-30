@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
+import { getVerifiedSession } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/api-rate-limit";
 import { ALL_PLATFORMS, type PlatformId } from "@/lib/platforms";
 import { autoDistributeClips } from "@/lib/clipper/distribute";
@@ -11,10 +11,22 @@ export async function POST(
   request: NextRequest,
   ctx: RouteContext<"/api/clips/[id]/auto-distribute">
 ) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  // Auto-distribute schedules N posts to social platforms — same gate
+  // as direct posting.
+  const auth = await getVerifiedSession();
+  if (!auth.ok) {
+    if (auth.reason === "no_session") {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+    return NextResponse.json(
+      {
+        error: "Verify your email before scheduling posts.",
+        reason: "email_not_verified",
+      },
+      { status: 403 },
+    );
   }
+  const session = auth.session;
 
   const rl = enforceRateLimit(request, session.id, "clips:distribute", 20);
   if (rl) return rl;

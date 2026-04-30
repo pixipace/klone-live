@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
+import { getVerifiedSession } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/api-rate-limit";
 import { firePost } from "@/lib/post-runner";
 
@@ -8,10 +8,21 @@ export async function POST(
   request: NextRequest,
   ctx: RouteContext<"/api/posts/[id]/retry">
 ) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  // Retry hits the same publish path as POST /api/posts — same gate.
+  const auth = await getVerifiedSession();
+  if (!auth.ok) {
+    if (auth.reason === "no_session") {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+    return NextResponse.json(
+      {
+        error: "Verify your email before retrying posts.",
+        reason: "email_not_verified",
+      },
+      { status: 403 },
+    );
   }
+  const session = auth.session;
 
   const rl = enforceRateLimit(request, session.id, "posts:retry", 20);
   if (rl) return rl;

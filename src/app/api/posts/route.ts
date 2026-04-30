@@ -1,16 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
+import { getVerifiedSession } from "@/lib/auth";
 import { firePost, isKnownPlatform } from "@/lib/post-runner";
 
 export async function POST(request: NextRequest) {
   let postId: string | null = null;
 
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    // Posting is gated on email verification — typo'd-email accounts
+    // can't publish to social platforms. Browsing/configuring still
+    // works (those routes use plain getSession).
+    const auth = await getVerifiedSession();
+    if (!auth.ok) {
+      if (auth.reason === "no_session") {
+        return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      }
+      return NextResponse.json(
+        {
+          error: "Verify your email before publishing posts. Check your inbox or click 'Resend' on the dashboard banner.",
+          reason: "email_not_verified",
+        },
+        { status: 403 },
+      );
     }
+    const session = auth.session;
 
     const body = await request.json();
     const { caption, mediaUrl, mediaType, platforms, scheduledFor } = body as {

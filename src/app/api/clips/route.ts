@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
+import { getSession, getVerifiedSession } from "@/lib/auth";
 import { probeYouTubeDuration } from "@/lib/clipper/youtube";
 import { enforceRateLimit } from "@/lib/api-rate-limit";
 
@@ -52,10 +52,23 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  // Clip job submission requires email verification — these jobs are
+  // expensive (download + whisper + ffmpeg + Gemma) so a typo'd-email
+  // account shouldn't be able to consume server resources.
+  const auth = await getVerifiedSession();
+  if (!auth.ok) {
+    if (auth.reason === "no_session") {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+    return NextResponse.json(
+      {
+        error: "Verify your email before generating clips. Check your inbox or click 'Resend' on the dashboard banner.",
+        reason: "email_not_verified",
+      },
+      { status: 403 },
+    );
   }
+  const session = auth.session;
 
   // Heavy op — clip job submission triggers download + whisper + ffmpeg
   const rl = enforceRateLimit(request, session.id, "clips:submit", 10);
