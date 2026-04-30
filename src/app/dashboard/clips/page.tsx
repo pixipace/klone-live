@@ -355,7 +355,7 @@ export default function ClipsPage() {
           <button
             onClick={() => setMode("url")}
             className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md transition-colors ${
-              mode === "url" ? "bg-accent text-white" : "text-muted-foreground hover:text-foreground"
+              mode === "url" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
             }`}
           >
             <LinkIcon className="w-3.5 h-3.5" />
@@ -364,7 +364,7 @@ export default function ClipsPage() {
           <button
             onClick={() => setMode("upload")}
             className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md transition-colors ${
-              mode === "upload" ? "bg-accent text-white" : "text-muted-foreground hover:text-foreground"
+              mode === "upload" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
             }`}
           >
             <Upload className="w-3.5 h-3.5" />
@@ -740,7 +740,7 @@ export default function ClipsPage() {
                 </label>
               </div>
 
-              <div className="border-t border-border/40 pt-4 mt-2">
+              <div className="border-t border-border pt-4 mt-2">
                 <label className="text-xs font-medium text-muted-foreground mb-2 block">
                   Caption style
                 </label>

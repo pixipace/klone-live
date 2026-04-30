@@ -294,7 +294,7 @@ export default async function PostsPage({
         )}
       </form>
 
-      <div className="flex gap-1 items-center flex-wrap border-b border-border/40 -mb-2">
+      <div className="flex gap-1 items-center flex-wrap border-b border-border -mb-2">
         {FILTERS.map((f) => {
           const isActive = filter === f.id;
           const n = filterCount(f.id);
@@ -352,7 +352,7 @@ export default async function PostsPage({
               <h2 className="text-[10px] font-medium text-muted uppercase tracking-[0.15em] mb-2 px-1">
                 {bucket}
               </h2>
-              <div className="rounded-xl bg-card/60 border border-border/40 overflow-hidden divide-y divide-border/40">
+              <div className="rounded-xl bg-card border border-border overflow-hidden divide-y divide-border/40">
                 {items.map((post) => {
                   const platforms = post.platforms ? post.platforms.split(",") : [];
                   const links = parseResults(post.results);
@@ -381,7 +381,7 @@ export default async function PostsPage({
                       />
 
                       {/* Thumbnail (real frame from clip, or letter placeholder) */}
-                      <div className="w-16 h-16 rounded-md bg-card border border-border/40 flex-shrink-0 overflow-hidden flex items-center justify-center text-[10px] text-muted">
+                      <div className="w-16 h-16 rounded-md bg-card border border-border flex-shrink-0 overflow-hidden flex items-center justify-center text-[10px] text-muted">
                         {thumbUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
@@ -479,7 +479,7 @@ export default async function PostsPage({
                                   return (
                                     <span
                                       key={p}
-                                      className="text-[10px] px-1.5 py-0.5 rounded bg-card border border-border/40 text-muted-foreground"
+                                      className="text-[10px] px-1.5 py-0.5 rounded bg-card border border-border text-muted-foreground"
                                     >
                                       {p}
                                     </span>
@@ -496,6 +496,9 @@ export default async function PostsPage({
                               <RetryButton
                                 postId={post.id}
                                 failedPlatforms={failedPlatforms}
+                                failedDetails={links
+                                  .filter((l) => l.error)
+                                  .map((l) => ({ platform: l.platform, error: l.error || "Unknown error" }))}
                               />
                             )}
                             {showMetrics && (

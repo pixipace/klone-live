@@ -213,8 +213,8 @@ export default async function DashboardPage() {
               />
               <Step
                 num={2}
-                title="Generate your first clip"
-                desc="Paste a YouTube URL — Klone picks viral moments + auto-edits cinematic 9:16 vertical clips."
+                title="Generate your first video"
+                desc="Two options: Clip Studio extracts viral moments from your own podcasts/talks. Explainer Studio narrates AI commentary over silent clips of any source — copyright-safe."
                 href="/dashboard/clips"
                 cta="Open Clip Studio →"
                 done={onboarding.generatedClip}

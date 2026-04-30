@@ -69,7 +69,7 @@ export function MetricsRow({
   if (!hasFetchablePlatforms) return null;
 
   return (
-    <div className="mt-3 pt-3 border-t border-border/40">
+    <div className="mt-3 pt-3 border-t border-border">
       {entries.length === 0 ? (
         <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] text-muted">
