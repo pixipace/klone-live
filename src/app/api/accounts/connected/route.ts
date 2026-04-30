@@ -25,28 +25,57 @@ export async function GET() {
     select: { platform: true, meta: true },
   });
 
-  const connected: PlatformId[] = [];
+  const connected = new Set<PlatformId>();
   for (const a of accounts) {
     const platform = a.platform as PlatformId;
     if (platform === "facebook") {
-      // Meta OAuth — figure out which of FB/IG are actually selectable
-      // based on the meta JSON contents (pages list + ig accounts list).
-      let meta: { pages?: unknown[]; igAccounts?: unknown[] } = {};
+      // Facebook row holds Pages list + (sometimes) the IG Business
+      // subaccount linked to each Page in instagram_business_account.
+      // We ALWAYS add "facebook" if the row has at least one Page; IG
+      // detection from the FB meta is a bonus path — the actual IG
+      // posting uses a separate "instagram" row created in parallel
+      // by the OAuth flow when the user has IG Business linked.
+      let meta: {
+        pages?: Array<{ instagram_business_account?: unknown }>;
+      } = {};
       try {
         meta = a.meta ? JSON.parse(a.meta) : {};
       } catch {
         // malformed meta — treat as no sub-accounts
       }
       if (Array.isArray(meta.pages) && meta.pages.length > 0) {
-        connected.push("facebook");
+        connected.add("facebook");
+        // If any page has an IG Business linked, mark IG connected too
+        // (covers older OAuth flows that didn't write a separate IG row).
+        if (meta.pages.some((p) => p && typeof p === "object" && "instagram_business_account" in p && p.instagram_business_account)) {
+          connected.add("instagram");
+        }
       }
-      if (Array.isArray(meta.igAccounts) && meta.igAccounts.length > 0) {
-        connected.push("instagram");
+    } else if (platform === "instagram") {
+      // Standalone Instagram row — the OAuth flow writes one of these
+      // when an IG Business account is linked. The meta JSON has
+      // { accounts: [...] } (NOT igAccounts as the connected route
+      // previously expected — that was a fieldname mismatch and meant
+      // every Instagram-connected user saw IG as "not connected" in
+      // the platform picker).
+      let meta: { accounts?: unknown[] } = {};
+      try {
+        meta = a.meta ? JSON.parse(a.meta) : {};
+      } catch {}
+      if (Array.isArray(meta.accounts) && meta.accounts.length > 0) {
+        connected.add("instagram");
+      } else {
+        // Even without an accounts list, an "instagram" row existing
+        // means the user successfully OAuth'd at some point. Add it
+        // and let the post-time check surface any issue. Better to
+        // err on the side of selectable — silent unselectable was
+        // the actual user-reported bug.
+        connected.add("instagram");
       }
     } else if (platform === "tiktok" || platform === "linkedin" || platform === "youtube") {
-      connected.push(platform);
+      connected.add(platform);
     }
   }
 
-  return NextResponse.json({ connected });
+  return NextResponse.json({ connected: Array.from(connected) });
 }
